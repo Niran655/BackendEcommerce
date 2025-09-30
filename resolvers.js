@@ -6,6 +6,7 @@ import { use } from "react";
 
 import PurchaseOrder from "./models/PurchaseOrder.js";
 import StockMovement from "./models/StockMovement.js";
+import paginateQuery from "./utils/paginateQuery.js";
 import Category from "./models/Category.js";
 import Supplier from "./models/Supplier.js";
 import Product from "./models/Product.js";
@@ -18,6 +19,7 @@ import User from "./models/User.js";
 const dateScalar = new GraphQLScalarType({
   name: "Date",
   description: "Date custom scalar type",
+
   serialize(value) {
     return value instanceof Date ? value.toISOString() : null;
   },
@@ -92,7 +94,6 @@ export const resolvers = {
   Product: {
     mainStock: (product) => {
       const ms = product.mainStock;
-
       // ប្រសិនបើ mainStock ជា array → គណនាសម្រាប់ធាតុនីមួយៗ
       if (Array.isArray(ms)) {
         return ms.map((item) => {
@@ -137,7 +138,7 @@ export const resolvers = {
     },
 
     users: async (_, __, { user }) => {
-      requireRole(user, ["Admin", "Manager"]);
+      requireRole(user, ["Admin", "Manager","Seller"]);
       return await User.find({});
     },
 
@@ -234,6 +235,33 @@ export const resolvers = {
         .populate("owner")
         .populate("shopCategory");
     },
+
+    getProductForShopWithPagination: async (
+      _,
+      { page = 1, limit = 10, pagination = true, keyword = "", shopId },
+      { user }
+    ) => {
+
+      // requireRole(user,["Seller"])
+      const query = {
+        active: true,
+        "shops.shop": shopId,
+        ...(keyword && { $or: [{ name: { $regex: keyword, $options: "i" } }] }),
+      };
+
+      const paginationQuery = await paginateQuery({
+        model: Product,
+        query,
+        page,
+        limit,
+        pagination,
+      });
+      return {
+        data: paginationQuery.data,
+        paginator: paginationQuery.paginator,
+      };
+    },
+
     getProductByShopCategoryId: async (_, { shopCategoryId }, { user }) => {
       requireRole(user, ["Seller"]);
       try {
@@ -294,7 +322,46 @@ export const resolvers = {
       } catch (error) {
         return errorResponse();
       }
+    },  
+    getCategoriesForShopWithPagination: async(
+      _,      
+      { page = 1, limit = 10, pagination = true, keyword = "", shopId },
+      { user })=>
+    {
+      //  requireRole(user,["Seller"])
+       try {
+          const query = {
+          active: true,
+          shop: shopId,
+          ...(keyword && {$or :[{name:{$regex:keyword,$options:'i'}}]})
+          };
+          const globalCategories = await Category.find({
+            owner:null,
+            shop: shopId,
+            active:true
+          })
+          const paginationQuery = await paginateQuery({
+                model: Category,
+                query,
+                page,
+                limit,
+                pagination,
+                populate: ["parent"],
+         });
+
+          return {
+            data:[
+              ...globalCategories,
+              ...paginationQuery.data
+            ],
+            paginator: paginationQuery.paginator
+          }
+       } catch (error) {
+        console.log("error",error)
+       }
     },
+
+    // ======================================END CATEGORY FOR SHOP================================
     getCategoryForOwner: async (_, { owner }) => {
       try {
         const ownerCategories = await Category.find({
@@ -373,7 +440,7 @@ export const resolvers = {
         .populate("cashier")
         .populate("items.product");
     },
-
+    //======================================START SUPPLIER QUERY=====================================
     suppliers: async (_, __, { user }) => {
       requireRole(user, ["Admin", "Manager", "StockKeeper"]);
       return await Supplier.find({ active: true });
@@ -387,11 +454,54 @@ export const resolvers = {
       return supplier || [];
     },
 
+    getSupplierPaginationForShop: async (
+      _,
+      { page = 1, limit = 10, pagination = true, keyword = "", shopId },
+      { user }
+    ) => {
+      requireRole(user, ["Seller"]);
+      const query = {
+        active: true,
+        shop: shopId,
+      };
+
+      if (keyword) {
+        query.$and = [
+          {
+            $or: [
+              {
+                name: { $regex: keyword, $options: "i" },
+              },
+            ],
+          },
+          {
+            active: true,
+          },
+          {
+            shop: shopId,
+          },
+        ];
+      }
+      const paginationQuery = await paginateQuery({
+        model: Supplier,
+        query,
+        page,
+        limit,
+        pagination,
+      });
+
+      return {
+        data: paginationQuery.data,
+        paginator: paginationQuery.paginator,
+      };
+    },
+
     supplier: async (_, { id }, { user }) => {
       requireRole(user, ["Admin", "Manager", "StockKeeper"]);
       return await Supplier.findById(id);
     },
 
+    // ====================================END SUPPLIER QUERY==============================
     purchaseOrders: async (_, __, { user }) => {
       requireRole(user, ["Admin", "Manager", "StockKeeper"]);
       return await PurchaseOrder.find({})
@@ -409,8 +519,46 @@ export const resolvers = {
         .populate("items.product");
     },
 
+    getPurchaseOrderWithPagination:async(
+      _,
+      {page = 1, limit = 10, pagination = true, keyword = "", shopId},
+      {user}
+    )=>{
+      requireRole(user,["Seller"])
+      try {
+         const query ={
+        shop:shopId,
+        ...keyword && {
+          $or:[
+            {
+              notes:{ $regex:keyword, $options: 'i'}
+            }
+          ]
+        }
+      }
+
+      const paginationQuery = await paginateQuery({
+        model: PurchaseOrder,
+        query,
+        page,
+        limit,
+        pagination,
+        populate: ["supplier", "orderedBy", "items.product"], 
+      });
+
+
+      return{
+        data: paginationQuery.data,
+        paginator: paginationQuery.paginator
+      }
+      } catch (error) {
+        console.log("error",error)
+      }
+    },
+
+    // ==================================START STOCK MOVEMENT QUERY===================================
     stockMovements: async (_, { productId }, { user }) => {
-      requireRole(user, ["Admin", "Manager", "StockKeeper", "Seller"]);
+      // requireRole(user, ["Admin", "Manager", "StockKeeper", "Seller"]);
       const filter = productId ? { product: productId } : {};
       const movements = await StockMovement.find(filter)
         .populate("product")
@@ -419,7 +567,101 @@ export const resolvers = {
         .limit(100);
       return movements.filter((m) => m.user);
     },
+    getStockMovementsWithPagination: async (
+      _,
+      { page = 1, limit = 10, pagination = true, keyword = "", productId },
+      { user }
+    ) => {
+      requireRole(user, ["Admin", "Manager", "StockKeeper", "Seller"]); 
 
+      try {
+        const query = {
+          ...(productId && { product: productId }),
+          ...(keyword && {
+            $or: [{ name: { $regex: keyword, $options: "i" } }],
+          }),
+        };
+        const paginationQuery = await paginateQuery({
+          model: StockMovement,
+          query,
+          page,
+          limit,
+          pagination,
+          populate: ["product", "user"], 
+        });      
+        const filteredData = paginationQuery.data.filter((m) => m.user);
+        return {
+          data: filteredData,
+          paginator: paginationQuery.paginator,
+        };
+      } catch (error) {
+        return errorResponse(); 
+      }
+    },
+
+    getStockMovementsByShop: async (_, { productId, shopId }, { user }) => {
+      requireRole(user, ["Seller"]);
+      const filter = {};
+      if (productId) filter.product = productId;
+      if (shopId) filter.shop = shopId;
+
+      const shop = await Shop.findById(shopId);
+      if (!shop || !shop.owner.equals(user._id)) {
+        throw new Error("អ្នកមិនមានសិទ្ធិមើលស្តុកហាងនេះទេ។");
+      }
+      const movements = await StockMovement.find(filter)
+        .populate("product")
+        .populate("user")
+        .populate("shop")
+        .sort({ createdAt: -1 })
+        .limit(100);
+      return movements.filter((m) => m.user);
+    },
+    getStockMovementsByshopWithPagination: async (
+      _,
+      { page = 1, limit = 10, pagination = true, keyword = "", shopId,productId },
+      { user }
+    ) => {
+      // requireRole(user,["Seller"]) 
+      try {
+      const filter = {};
+      if (productId) filter.product = productId;
+      if (shopId) filter.shop = shopId;
+      const shop = await Shop.findById(shopId);
+ 
+      // if (!shop || !shop.owner.equals(user.id)) {
+      //   throw new Error("អ្នកមិនមានសិទ្ធិមើលស្តុកហាងនេះទេ។");
+      // } 
+      const query = {
+        ...filter,
+        active: true,
+        shop: shopId, 
+        ...(keyword && {
+          $or: [
+            { name: { $regex: keyword, $options: "i" } }
+          ]
+        }),
+      };
+      const paginationQuery = await paginateQuery({
+        model: StockMovement,
+        query,
+        page,
+        limit,
+        pagination,
+        populate:["product","user","owner"]
+      });
+
+      return {
+        data: paginationQuery.data,
+        paginator: paginationQuery.paginator,
+      };
+      } catch (error) {
+        console.log("Errro",error)
+      }
+    },
+    // ==================================END STOCK MOVEMENT QUERY===================================
+
+    //===================================START DASHBOARD QUERY========================================
     dashboardStats: async (_, __, { user }) => {
       requireAuth(user);
       const today = new Date();
@@ -436,14 +678,24 @@ export const resolvers = {
           },
         },
         {
-          $group: { _id: null, total: { $sum: "$total" }, count: { $sum: 1 } },
+          $group: {
+            _id: null,
+            total: { $sum: "$total" },
+            count: { $sum: 1 },
+          },
         },
       ]);
 
       // Top products
       const topProducts = await Sale.aggregate([
-        { $match: { status: "completed" } },
-        { $unwind: "$items" },
+        {
+          $match: {
+            status: "completed",
+          },
+        },
+        {
+          $unwind: "$items",
+        },
         {
           $group: {
             _id: "$items.product",
@@ -451,8 +703,14 @@ export const resolvers = {
             revenue: { $sum: "$items.total" },
           },
         },
-        { $sort: { quantitySold: -1 } },
-        { $limit: 10 },
+        {
+          $sort: {
+            quantitySold: -1,
+          },
+        },
+        {
+          $limit: 10,
+        },
         {
           $lookup: {
             from: "products",
@@ -461,7 +719,9 @@ export const resolvers = {
             as: "product",
           },
         },
-        { $unwind: "$product" },
+        {
+          $unwind: "$product",
+        },
       ]);
 
       // Hourly sales
@@ -534,28 +794,28 @@ export const resolvers = {
       ]);
 
       // Top products
-    const topProducts = await Sale.aggregate([
-      { $match: { status: "completed", shop: shopObjectId } },
-      { $unwind: "$items" },
-      {
-        $group: {
-          _id: "$items.product",
-          quantitySold: { $sum: "$items.quantity" },
-          revenue: { $sum: "$items.total" },
+      const topProducts = await Sale.aggregate([
+        { $match: { status: "completed", shop: shopObjectId } },
+        { $unwind: "$items" },
+        {
+          $group: {
+            _id: "$items.product",
+            quantitySold: { $sum: "$items.quantity" },
+            revenue: { $sum: "$items.total" },
+          },
         },
-      },
-      { $sort: { quantitySold: -1 } },
-      { $limit: 10 },
-      {
-        $lookup: {
-          from: "products",
-          localField: "_id",
-          foreignField: "_id",
-          as: "product",
+        { $sort: { quantitySold: -1 } },
+        { $limit: 10 },
+        {
+          $lookup: {
+            from: "products",
+            localField: "_id",
+            foreignField: "_id",
+            as: "product",
+          },
         },
-      },
-      { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } }, // ✅
-    ]);
+        { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
+      ]);
 
       // Hourly sales
       const hourlySales = await Sale.aggregate([
@@ -575,12 +835,12 @@ export const resolvers = {
         },
         { $sort: { _id: 1 } },
       ]);
-      
+
       // Low stock items
       const lowStockItems = await Product.find({
         active: true,
         "shops.shop": shopObjectId,
-        $expr: { $lte: ["$stock", "$minStock"] }
+        $expr: { $lte: ["$stock", "$minStock"] },
       });
       const stats = todaySales[0] || { total: 0, count: 0 };
 
@@ -589,8 +849,8 @@ export const resolvers = {
         totalTransactions: stats.count,
         averageOrderValue: stats.count > 0 ? stats.total / stats.count : 0,
         topProducts: topProducts
-          .filter(tp => tp.product) 
-          .map(tp => ({
+          .filter((tp) => tp.product)
+          .map((tp) => ({
             product: tp.product,
             quantitySold: tp.quantitySold,
             revenue: tp.revenue,
@@ -603,6 +863,8 @@ export const resolvers = {
         })),
       };
     },
+
+    //===================================END DASHBOARD QUERY========================================
 
     // =============================================START REPORT QUERY==========================================
     salesReport: async (_, { startDate, endDate }, { user }) => {
@@ -838,7 +1100,7 @@ export const resolvers = {
     },
     deleteShop: async (_, { shopId }, { user }) => {
       try {
-        // requireRole(user, ["Admin"]);
+        requireRole(user, ["Admin"]);
         const deleted = await Shop.findByIdAndDelete(shopId);
         if (!deleted) {
           throw new Error("ហាងមិនមានទេ");
@@ -945,7 +1207,7 @@ export const resolvers = {
       };
     },
 
-    //Owner Product CRUD====================================================================================================
+    //==================================================Owner Product CRUD==================================================
     createProductForOwner: async (_, { input }, { user }) => {
       requireRole(user, ["Seller"]);
       try {
@@ -1018,12 +1280,17 @@ export const resolvers = {
           .populate("shops.shop")
           .populate("comboItems.product");
 
+        // return {
+        //   isSuccess: true,
+        //   message: {
+        //     messageEn: "Product created successfully for owner",
+        //     messageKh: "ទំនិញត្រូវបានបង្កើតដោយជោគជ័យសម្រាប់ម្ចាស់",
+        //   },
+        //   product: createdProduct,
+        // };
+
         return {
-          isSuccess: true,
-          message: {
-            messageEn: "Product created successfully for owner",
-            messageKh: "ទំនិញត្រូវបានបង្កើតដោយជោគជ័យសម្រាប់ម្ចាស់",
-          },
+          ...successResponse(),
           product: createdProduct,
         };
       } catch (error) {
@@ -1272,7 +1539,7 @@ export const resolvers = {
       return successResponse();
     },
 
-    //=======================================================================================================
+    //==============================================================END PRODUCT MUTATION================================================================
 
     deleteCategory: async (_, { id }, { user }) => {
       try {
@@ -1322,7 +1589,7 @@ export const resolvers = {
         if (existing) {
           return errorResponse(
             "Category name already exists in this scope",
-            "ឈ្មោះប្រភេទមានរួចហើយនៅក្នុងវិសាលភាពនេះ"
+            "ឈ្មោះប្រភេទមានរួចហើយ"
           );
         }
 
@@ -1396,7 +1663,7 @@ export const resolvers = {
         return errorResponse();
       }
     },
-    // ==============================================================================
+    // ==============================================END CATEGORY MUTATION=========================================================
     createBanner: async (_, { input }) => {
       try {
         const existingBanner = await Banner.findOne({ title: input.title });
@@ -1409,64 +1676,28 @@ export const resolvers = {
             },
           };
         }
-        return {
-          isSuccess: true,
-          message: {
-            messageEn: "Successfully deleted.",
-            messageKh: "ជោគជ័យ។",
-          },
-        };
+        return successResponse();
       } catch (error) {
-        return {
-          isSuccess: false,
-          message: {
-            messageEn: "Failed to delete.",
-            messageKh: "បរាជ័យ។",
-          },
-        };
+        return errorResponse();
       }
     },
 
     updateBanner: async (_, { id, input }) => {
       try {
         await Banner.findByIdAndUpdate(id, input);
-        return {
-          isSuccess: true,
-          message: {
-            messageEn: "Successfully deleted.",
-            messageKh: "ជោគជ័យ។",
-          },
-        };
+        return successResponse();
       } catch (err) {
         console.log("error", err);
-        return {
-          isSuccess: false,
-          message: {
-            messageEn: "Failed to delete.",
-            messageKh: "បរាជ័យ។",
-          },
-        };
+        return errorResponse();
       }
     },
 
     deleteBanner: async (_, { id }) => {
       try {
         await Banner.findByIdAndDelete(id);
-        return {
-          isSuccess: true,
-          message: {
-            messageEn: "Successfully deleted.",
-            messageKh: "ជោគជ័យ។",
-          },
-        };
+        return successResponse();
       } catch (err) {
-        return {
-          isSuccess: false,
-          message: {
-            messageEn: "Failed to delete.",
-            messageKh: "បរាជ័យ។",
-          },
-        };
+        return errorResponse();
       }
     },
 
@@ -1535,6 +1766,7 @@ export const resolvers = {
             quantity: item.quantity,
             reason: "Sale",
             reference: saleNumber,
+            shop,
             user: user.id,
             previousStock,
             newStock,
@@ -1675,7 +1907,7 @@ export const resolvers = {
       }
     },
 
-    // ====================================END SUPPLIER MUTATION====================
+    // ====================================END SUPPLIER MUTATION=========================================
     createPurchaseOrder: async (_, { input }, { user }) => {
       requireRole(user, ["Admin", "Manager", "StockKeeper"]);
       const poNumber = generatePONumber();
@@ -1690,19 +1922,23 @@ export const resolvers = {
         .populate("items.product");
     },
 
-    createPurchaseOrderForShop: async (_, { input }, { user }) => {
-      requireRole(user, ["Seller"]);
+    createPurchaseOrderForShop: async (_, { input,shopId }, { user }) => {
+      if (!user) {
+        throw new Error('Authentication required');
+      }
       try {
         const poNumber = generatePONumber();
         const owner = user.role === "Admin" ? null : user.id;
-        const shop = input.shopId | null;
-        const purchaseOrder = new PurchaseOrder({
+       
+        const purChaseOrder = new PurchaseOrder({
           ...input,
           owner,
-          shop,
+          shop: shopId || null,
           poNumber,
+          orderedBy: user.id 
         });
-        const purchaseOrderSave = await (await purchaseOrder.save())
+        const savedPO = await purChaseOrder.save();
+        const populatedPO = await PurchaseOrder.findById(savedPO._id)
           .populate("supplier")
           .populate("orderedBy")
           .populate("items.product")
@@ -1710,12 +1946,14 @@ export const resolvers = {
           .populate("shop");
         return {
           ...successResponse(),
-          purchaseOrderSave,
-        };
+          purchaseOrder: populatedPO,
+        }
       } catch (error) {
-        return errorResponse();
+        console.error("Create Purchase Order Error:", error);
+        return errorResponse(error.message);
       }
     },
+
 
     updatePurchaseOrderStatus: async (_, { id, status }, { user }) => {
       requireRole(user, ["Admin", "Manager", "StockKeeper"]);
@@ -1797,3 +2035,4 @@ export const resolvers = {
     },
   },
 };
+//==========================================================END MUTATION======================================================

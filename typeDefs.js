@@ -147,21 +147,21 @@ export const typeDefs = `#graphql
 
     type PurchaseOrder {
       id: ID!
-      poNumber: String!
-      supplier: Supplier!
-      items: [POItem!]!
-      subtotal: Float!
-      tax: Float!
-      total: Float!
-      status: POStatus!
+      poNumber: String
+      supplier: Supplier
+      items: [POItem]
+      subtotal: Float
+      tax: Float
+      total: Float
+      status: POStatus
       owner: User               
       shop: Shop
-      orderedBy: User!
-      orderDate: Date!
+      orderedBy: User
+      orderDate: Date
       receivedDate: Date
       notes: String
-      createdAt: Date!
-      updatedAt: Date!
+      createdAt: Date
+      updatedAt: Date
     }
 
     type POItem {
@@ -173,18 +173,18 @@ export const typeDefs = `#graphql
     }
 
     type StockMovement {
-      id: ID!
-      shopId: Shop
+      id: ID
+      shop: Shop
       owner: User
-      product: Product!
-      type: StockMovementType!
-      quantity: Int!
-      reason: String!
+      product: Product
+      type: StockMovementType
+      quantity: Int
+      reason: String
       reference: String
-      user: User!
-      previousStock: Int!
-      newStock: Int!
-      createdAt: Date!
+      user: User
+      previousStock: Int
+      newStock: Int
+      createdAt: Date
     }
 
 
@@ -304,8 +304,41 @@ export const typeDefs = `#graphql
       isSuccess: Boolean
       message: Message
     }
+    # =============================================PAGINATIN===========================================
+    type PaginatorMeta {
+    slNo: Int!
+    prev: Int
+    next: Int
+    perPage: Int!
+    totalPosts: Int!
+    totalPages: Int!
+    currentPage: Int!
+    hasPrevPage: Boolean!
+    hasNextPage: Boolean!
+    totalDocs: Int!
+  }
+  type CategoryPaginator{
+    data: [Category]
+    paginator: PaginatorMeta
+  }
+  type SupplierPaginator {
+    data: [Supplier]
+    paginator: PaginatorMeta
+  }
+  type ProductPaginator{
+    data: [Product]
+    paginator: PaginatorMeta
+  }
+  type StockMovementPaginator{
+    data: [StockMovement]
+    paginator: PaginatorMeta
+  }
+  type purchaseOrderPaginator{
+    data: [PurchaseOrder]
+    pagination: PaginatorMeta
+  }
 
-    # =================================================INPUT TYPE===========================================================================
+  # =================================================INPUT TYPE===========================================================================
 
     input UserInput {
       name: String!
@@ -355,8 +388,6 @@ export const typeDefs = `#graphql
       isCombo: Boolean
       comboItems: [ComboItemInput]
     }
-
-
    
     input ProductForShopInput {
       productData: ProductInput
@@ -445,8 +476,6 @@ export const typeDefs = `#graphql
       address: String!
     }
 
-
-
     input SupplierUpdateInput {
       name: String
       contactPerson: String
@@ -457,11 +486,11 @@ export const typeDefs = `#graphql
     }
 
     input PurchaseOrderInput {
-      supplier: ID!
-      items: [POItemInput!]!
-      subtotal: Float!
-      tax: Float!
-      total: Float!
+      supplier: ID
+      items: [POItemInput]
+      subtotal: Float
+      tax: Float
+      total: Float
       shopId:ID
       owner:ID
       notes: String
@@ -515,6 +544,7 @@ export const typeDefs = `#graphql
       lowStockProducts: [Product]!
       getLowStockProductByShop(shopId:ID):[Product]!
       productSlideByCategory(category:String!): [Product!]!
+      getProductForShopWithPagination(page: Int, limit: Int, pagination: Boolean, keyword: String, shopId:ID):ProductPaginator
 
       #Owner && Shop Product Query
       getProductsForShop(shopId:ID!) :[Product!]!
@@ -526,6 +556,7 @@ export const typeDefs = `#graphql
       categorys: [Category!]!
       category(id:ID!): Category
       getCategoriesForShop(shopId: ID): [Category]
+      getCategoriesForShopWithPagination(shopId:ID,page:Int,limit:Int, pagination: Boolean, keyword: String):CategoryPaginator
       getCategoryForOwner(owner:ID):[Category]
       getParentCategoryForAdmin:[Category]
 
@@ -540,18 +571,25 @@ export const typeDefs = `#graphql
       sale(id: ID!): Sale
       salesByDateRange(startDate: Date!, endDate: Date!): [Sale!]!
 
+      #============================START SUPPLIER QUERY==============================
       # Suppliers
       suppliers: [Supplier!]!
       supplier(id: ID!): Supplier
       getSuppliersForShop(shopId:ID):[Supplier]
+      getSupplierPaginationForShop(page: Int, limit: Int, pagination: Boolean, keyword: String, shopId:ID): SupplierPaginator
 
+      #================================END SUPPLIER QUERY=================================
       # Purchase Orders
       purchaseOrders: [PurchaseOrder!]!
       purchaseOrder(id: ID!): PurchaseOrder
+      getPurchaseOrderWithPagination(shopId:ID,page: Int, limit: Int, pagination: Boolean, keyword: String):purchaseOrderPaginator
+      
       #================================START STOCK MOVEMENT==================================================
       # Stock Movements
-      stockMovements(productId: ID): [StockMovement!]!
-      getStockMovementsByShop(productId:ID,shopId:ID):[StockMovement]!
+      stockMovements(productId: ID): [StockMovement]
+      getStockMovementsByShop(productId:ID,shopId:ID):[StockMovement]
+      getStockMovementsWithPagination(productId: ID,page: Int, limit: Int, pagination: Boolean, keyword: String):StockMovementPaginator
+      getStockMovementsByshopWithPagination(productId:ID, shopId:ID,page: Int, limit: Int, pagination: Boolean, keyword: String):StockMovementPaginator
 
       #================================END STOCK MOVEMENT===================================================
 
@@ -615,7 +653,7 @@ export const typeDefs = `#graphql
      
       # updateProductForOwner(id:ID!,input:ProductInput): MutationResponse!
   
-      #===============================================================================#
+      #====================================================================================================#
       #===========================================START SALES MUTATION=======================
       # Sales
       createSale(input: SaleInput!): Sale!
@@ -632,9 +670,8 @@ export const typeDefs = `#graphql
 
       # Purchase Orders
       createPurchaseOrder(input: PurchaseOrderInput!): PurchaseOrder! 
-      createPurchaseOrderForShop(input:PurchaseOrderInput): MutationResponse!
+      createPurchaseOrderForShop(input:PurchaseOrderInput,shopId:ID): MutationResponse!
       updatePurchaseOrderStatus(id: ID!, status: POStatus!): MutationResponse
       receivePurchaseOrder(id: ID!): PurchaseOrder!
-
     }
   `;
