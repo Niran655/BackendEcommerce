@@ -5,7 +5,6 @@ const productSchema = new mongoose.Schema({
   owner: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   description: { type: String },
   category: { type: String, required: false },
-  // shopCategoryId:{type: String,require:false},
   shopCategory: { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
   price: { type: Number, required: false },
   cost: { type: Number, required: false },

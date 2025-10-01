@@ -13,8 +13,13 @@ export const typeDefs = `#graphql
     }
     type Shop {
       id: ID!
-      owner: User!     
+      owner: User!
+      code:String
+      slug:String     
+      image:String
       shopName: String!
+      enName:String
+      type:Category
       description: String
       createdAt: Date!
       updatedAt: Date!
@@ -112,6 +117,76 @@ export const typeDefs = `#graphql
       status: SaleStatus!
       createdAt: Date!
     }
+
+    #Order
+    type Order {
+      id: ID!
+      customer: Customer
+      restaurant: Restaurant
+      items: [OrderItem]
+      deliveryAddress: String
+      deliveryFee: Float
+      discount: Float
+      tax: Float
+      totalPrice: Float       
+      grandTotal: Float        
+      paymentMethod: String
+      payments: [Payment]      
+      status: OrderStatus
+      createdAt: Date
+      updatedAt: Date
+      remark: String
+    }
+
+    type Payment {
+      id: ID!
+      order: Order
+      paidAmount: Float
+      paymentMethod: String
+      status: PaymentStatus
+      transactionId: String
+      createdAt: Date
+    }
+
+    type Customer {
+      id: ID!
+      firstName: String
+      lastName: String
+      phone: String
+      email: String
+    }
+
+    type Restaurant {
+      id: ID!
+      name: String
+      address: String
+      phone: String
+    }
+
+    type OrderItem {
+      product: Product
+      quantity: Int
+      price: Float    
+      total: Float    
+    }
+
+    enum OrderStatus {
+      PENDING
+      CONFIRMED
+      PREPARING
+      ON_THE_WAY
+      DELIVERED
+      CANCELLED
+    }
+
+    enum PaymentStatus {
+      PENDING
+      SUCCESS
+      FAILED
+      REFUNDED
+    }
+
+
 
     type Banner {
         id:ID!
@@ -233,16 +308,15 @@ export const typeDefs = `#graphql
   type Category {
     id: ID!
     name: String
+    nameKh:String
     slug: String          
     description: String    
     image: String               
     active: Boolean
-
     parent: Category     
     children: [Category]     
     owner: User               
     shop: Shop  
-
     createdAt: Date
     updatedAt: Date
   }
@@ -257,6 +331,7 @@ export const typeDefs = `#graphql
       Staff
       Customer
     }
+
 
     enum PaymentMethod {
       cash
@@ -366,7 +441,12 @@ export const typeDefs = `#graphql
     input ShopInput {
       owner: ID!
       shopName: String!
+      enName:String
       description: String
+      image:String
+      code:String
+      slug:String  
+      typeId:ID!
     }
 
    # Update ProductInput
@@ -505,6 +585,7 @@ export const typeDefs = `#graphql
     }
     input CategoryInput{
         name: String!
+        nameKh:String
         slug: String!          
         description: String    
         image: String           
@@ -534,6 +615,7 @@ export const typeDefs = `#graphql
       myShops: [Shop!]!
       getShopsByOwnerId(id:ID!):[Shop]!
       getShops: [Shop!]!
+      getShopsByTypeId(typeId:ID):[Shop]
       shop(id: ID!): Shop
       #======================================================================================================================
       #General Products QueryQ

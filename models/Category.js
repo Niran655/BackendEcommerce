@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 const categorySchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
+    nameKh:{type: String, require: true},
     slug: { type: String, required: true },
     description: String,
     image: String,

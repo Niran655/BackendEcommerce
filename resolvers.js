@@ -183,6 +183,10 @@ export const resolvers = {
     shop: async (_, { id }) => {
       return await Shop.findById(id);
     },
+    getShopsByTypeId: async (_, { typeId }) => {
+      return await Shop.find({ type: typeId }); 
+    },
+
 
     // =========================================================================================
     // General Product
@@ -1112,7 +1116,7 @@ export const resolvers = {
       }
     },
     createShopForSeller: async (_, { input }, { user }) => {
-      requireRole(user, ["Admin"]);
+      // requireRole(user, ["Admin"]);
       try {
         if (!input.shopName || !input.owner) {
           throw new Error("Missing required fields: shopName or owner");
@@ -1121,10 +1125,31 @@ export const resolvers = {
         if (!seller || seller.role !== "Seller") {
           throw new Error("Owner is not a valid seller");
         }
+      function generateSlug(name) {
+        return name
+          .toLowerCase()
+          .trim()
+          .replace(/[^\p{L}\p{N}\s-]/gu, "")
+          .replace(/\s+/g, "-");             
+      }
+       
+          function generateCode(){
+            const timestamp = Date.now().toString().slice(-6); 
+            const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+            return `SHOP-${timestamp}-${random}`;
+          }
+
+        const slug = generateSlug(input.enName);
+        const code = generateCode();
+
         const shop = new Shop({
           shopName: input.shopName,
           description: input.description,
           owner: input.owner,
+          image:input.image,
+          type: input.typeId,
+          slug,
+          code
         });
         await shop.save();
 
@@ -1170,13 +1195,7 @@ export const resolvers = {
           createProduct,
         };
       } catch (error) {
-        return {
-          isSuccess: false,
-          message: {
-            messageEn: "Failed to delete.",
-            messageKh: "បរាជ័យ។",
-          },
-        };
+        return errorResponse()
       }
     },
 
@@ -1294,14 +1313,7 @@ export const resolvers = {
           product: createdProduct,
         };
       } catch (error) {
-        console.error("Error creating product for owner:", error);
-        return {
-          isSuccess: false,
-          message: {
-            messageEn: error.message || "Failed to create product",
-            messageKh: "កំហុសក្នុងការបង្កើតទំនិញ",
-          },
-        };
+        return errorResponse()
       }
     },
     createProductForShop: async (_, { input }, { user }) => {
@@ -1605,6 +1617,7 @@ export const resolvers = {
             .replace(/[^\u1780-\u17FF\w-]+/g, "");
         const category = new Category({
           name: input.name,
+          nameKh:input.nameKh,
           slug,
           description: input.description || "",
           image: input.image || "",
@@ -1623,7 +1636,6 @@ export const resolvers = {
           category,
         };
       } catch (error) {
-        console.error("Create category error:", error);
         return errorResponse();
       }
     },
@@ -1642,6 +1654,7 @@ export const resolvers = {
         const category = new Category(
           {
             name: input.name,
+            name: input.nameKh,
             slug,
             description: input.description || "",
             image: input.image || "",

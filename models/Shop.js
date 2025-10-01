@@ -1,11 +1,21 @@
 import mongoose from "mongoose";
 
-const ShopSchema = new mongoose.Schema({
-  shopName: { type: String, required: true },
-  description: { type: String },
-  owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }
-}, { timestamps: true });
-
+const ShopSchema = new mongoose.Schema(
+  {
+    shopName: { type: String, required: true },
+    description: { type: String },
+    owner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    type: { type: mongoose.Schema.Types.ObjectId, ref: "Category",},
+    enName: { type: String, require: true },
+    slug: { type: String, require: true },
+    image: { type: String, require: true },
+    code: { type: String, require: true },
+  },
+  { timestamps: true }
+);
 const Shop = mongoose.model("Shop", ShopSchema);
 export default Shop;
-
