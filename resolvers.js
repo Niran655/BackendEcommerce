@@ -12,6 +12,7 @@ import Supplier from "./models/Supplier.js";
 import Product from "./models/Product.js";
 import { errorResponse, successResponse } from "./utils/response.js";
 import Banner from "./models/Banner.js";
+import Order from "./models/Order.js";
 import Sale from "./models/Sale.js";
 import Shop from "./models/Shop.js";
 import User from "./models/User.js";
@@ -138,7 +139,7 @@ export const resolvers = {
     },
 
     users: async (_, __, { user }) => {
-      requireRole(user, ["Admin", "Manager","Seller"]);
+      requireRole(user, ["Admin", "Manager", "Seller"]);
       return await User.find({});
     },
 
@@ -184,9 +185,8 @@ export const resolvers = {
       return await Shop.findById(id);
     },
     getShopsByTypeId: async (_, { typeId }) => {
-      return await Shop.find({ type: typeId }); 
+      return await Shop.find({ type: typeId });
     },
-
 
     // =========================================================================================
     // General Product
@@ -245,7 +245,6 @@ export const resolvers = {
       { page = 1, limit = 10, pagination = true, keyword = "", shopId },
       { user }
     ) => {
-
       // requireRole(user,["Seller"])
       const query = {
         active: true,
@@ -326,43 +325,42 @@ export const resolvers = {
       } catch (error) {
         return errorResponse();
       }
-    },  
-    getCategoriesForShopWithPagination: async(
-      _,      
+    },
+    getCategoriesForShopWithPagination: async (
+      _,
       { page = 1, limit = 10, pagination = true, keyword = "", shopId },
-      { user })=>
-    {
+      { user }
+    ) => {
       //  requireRole(user,["Seller"])
-       try {
-          const query = {
+      try {
+        const query = {
           active: true,
           shop: shopId,
-          ...(keyword && {$or :[{name:{$regex:keyword,$options:'i'}}]})
-          };
-          const globalCategories = await Category.find({
-            owner:null,
-            shop: shopId,
-            active:true
-          })
-          const paginationQuery = await paginateQuery({
-                model: Category,
-                query,
-                page,
-                limit,
-                pagination,
-                populate: ["parent"],
-         });
+          ...(keyword && {
+            $or: [{ name: { $regex: keyword, $options: "i" } }],
+          }),
+        };
+        const globalCategories = await Category.find({
+          owner: null,
+          shop: shopId,
+          active: true,
+        });
+        const paginationQuery = await paginateQuery({
+          model: Category,
+          query,
+          page,
+          limit,
+          pagination,
+          populate: ["parent"],
+        });
 
-          return {
-            data:[
-              ...globalCategories,
-              ...paginationQuery.data
-            ],
-            paginator: paginationQuery.paginator
-          }
-       } catch (error) {
-        console.log("error",error)
-       }
+        return {
+          data: [...globalCategories, ...paginationQuery.data],
+          paginator: paginationQuery.paginator,
+        };
+      } catch (error) {
+        console.log("error", error);
+      }
     },
 
     // ======================================END CATEGORY FOR SHOP================================
@@ -444,6 +442,25 @@ export const resolvers = {
         .populate("cashier")
         .populate("items.product");
     },
+
+    getAllOrder: async () => {
+      try {
+        const orders = await Order.find().populate("items.product");
+        return orders;
+      } catch (error) {
+        console.error("កំហុសក្នុងការទាញយក Order:", error);
+        throw new Error("មិនអាចទាញយក Order បានទេ");
+      }
+    },
+    getOrderForShop: async (_, { shopId }) => {
+      try {
+        const orders = await Order.find({ shop: shopId }).populate("items.product");
+        return orders; 
+      } catch (error) {
+        console.error("កំហុសក្នុងការទាញយក order:", error);
+        throw new Error("មិនអាចយក order បានទេ");
+      }
+    },
     //======================================START SUPPLIER QUERY=====================================
     suppliers: async (_, __, { user }) => {
       requireRole(user, ["Admin", "Manager", "StockKeeper"]);
@@ -523,40 +540,39 @@ export const resolvers = {
         .populate("items.product");
     },
 
-    getPurchaseOrderWithPagination:async(
+    getPurchaseOrderWithPagination: async (
       _,
-      {page = 1, limit = 10, pagination = true, keyword = "", shopId},
-      {user}
-    )=>{
-      requireRole(user,["Seller"])
+      { page = 1, limit = 10, pagination = true, keyword = "", shopId },
+      { user }
+    ) => {
+      requireRole(user, ["Seller"]);
       try {
-         const query ={
-        shop:shopId,
-        ...keyword && {
-          $or:[
-            {
-              notes:{ $regex:keyword, $options: 'i'}
-            }
-          ]
-        }
-      }
+        const query = {
+          shop: shopId,
+          ...(keyword && {
+            $or: [
+              {
+                notes: { $regex: keyword, $options: "i" },
+              },
+            ],
+          }),
+        };
 
-      const paginationQuery = await paginateQuery({
-        model: PurchaseOrder,
-        query,
-        page,
-        limit,
-        pagination,
-        populate: ["supplier", "orderedBy", "items.product"], 
-      });
+        const paginationQuery = await paginateQuery({
+          model: PurchaseOrder,
+          query,
+          page,
+          limit,
+          pagination,
+          populate: ["supplier", "orderedBy", "items.product"],
+        });
 
-
-      return{
-        data: paginationQuery.data,
-        paginator: paginationQuery.paginator
-      }
+        return {
+          data: paginationQuery.data,
+          paginator: paginationQuery.paginator,
+        };
       } catch (error) {
-        console.log("error",error)
+        console.log("error", error);
       }
     },
 
@@ -576,7 +592,7 @@ export const resolvers = {
       { page = 1, limit = 10, pagination = true, keyword = "", productId },
       { user }
     ) => {
-      requireRole(user, ["Admin", "Manager", "StockKeeper", "Seller"]); 
+      requireRole(user, ["Admin", "Manager", "StockKeeper", "Seller"]);
 
       try {
         const query = {
@@ -591,15 +607,15 @@ export const resolvers = {
           page,
           limit,
           pagination,
-          populate: ["product", "user"], 
-        });      
+          populate: ["product", "user"],
+        });
         const filteredData = paginationQuery.data.filter((m) => m.user);
         return {
           data: filteredData,
           paginator: paginationQuery.paginator,
         };
       } catch (error) {
-        return errorResponse(); 
+        return errorResponse();
       }
     },
 
@@ -623,44 +639,49 @@ export const resolvers = {
     },
     getStockMovementsByshopWithPagination: async (
       _,
-      { page = 1, limit = 10, pagination = true, keyword = "", shopId,productId },
+      {
+        page = 1,
+        limit = 10,
+        pagination = true,
+        keyword = "",
+        shopId,
+        productId,
+      },
       { user }
     ) => {
-      // requireRole(user,["Seller"]) 
+      // requireRole(user,["Seller"])
       try {
-      const filter = {};
-      if (productId) filter.product = productId;
-      if (shopId) filter.shop = shopId;
-      const shop = await Shop.findById(shopId);
- 
-      // if (!shop || !shop.owner.equals(user.id)) {
-      //   throw new Error("អ្នកមិនមានសិទ្ធិមើលស្តុកហាងនេះទេ។");
-      // } 
-      const query = {
-        ...filter,
-        active: true,
-        shop: shopId, 
-        ...(keyword && {
-          $or: [
-            { name: { $regex: keyword, $options: "i" } }
-          ]
-        }),
-      };
-      const paginationQuery = await paginateQuery({
-        model: StockMovement,
-        query,
-        page,
-        limit,
-        pagination,
-        populate:["product","user","owner"]
-      });
+        const filter = {};
+        if (productId) filter.product = productId;
+        if (shopId) filter.shop = shopId;
+        const shop = await Shop.findById(shopId);
 
-      return {
-        data: paginationQuery.data,
-        paginator: paginationQuery.paginator,
-      };
+        // if (!shop || !shop.owner.equals(user.id)) {
+        //   throw new Error("អ្នកមិនមានសិទ្ធិមើលស្តុកហាងនេះទេ។");
+        // }
+        const query = {
+          ...filter,
+          active: true,
+          shop: shopId,
+          ...(keyword && {
+            $or: [{ name: { $regex: keyword, $options: "i" } }],
+          }),
+        };
+        const paginationQuery = await paginateQuery({
+          model: StockMovement,
+          query,
+          page,
+          limit,
+          pagination,
+          populate: ["product", "user", "owner"],
+        });
+
+        return {
+          data: paginationQuery.data,
+          paginator: paginationQuery.paginator,
+        };
       } catch (error) {
-        console.log("Errro",error)
+        console.log("Errro", error);
       }
     },
     // ==================================END STOCK MOVEMENT QUERY===================================
@@ -1125,19 +1146,22 @@ export const resolvers = {
         if (!seller || seller.role !== "Seller") {
           throw new Error("Owner is not a valid seller");
         }
-      function generateSlug(name) {
-        return name
-          .toLowerCase()
-          .trim()
-          .replace(/[^\p{L}\p{N}\s-]/gu, "")
-          .replace(/\s+/g, "-");             
-      }
-       
-          function generateCode(){
-            const timestamp = Date.now().toString().slice(-6); 
-            const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-            return `SHOP-${timestamp}-${random}`;
-          }
+        function generateSlug(name) {
+          return name
+            .toLowerCase()
+            .trim()
+            .replace(/[^\p{L}\p{N}\s-]/gu, "")
+            .replace(/\s+/g, "-");
+        }
+
+        function generateCode() {
+          const timestamp = Date.now().toString().slice(-6);
+          const random = Math.random()
+            .toString(36)
+            .substring(2, 6)
+            .toUpperCase();
+          return `SHOP-${timestamp}-${random}`;
+        }
 
         const slug = generateSlug(input.enName);
         const code = generateCode();
@@ -1146,10 +1170,10 @@ export const resolvers = {
           shopName: input.shopName,
           description: input.description,
           owner: input.owner,
-          image:input.image,
+          image: input.image,
           type: input.typeId,
           slug,
-          code
+          code,
         });
         await shop.save();
 
@@ -1195,7 +1219,7 @@ export const resolvers = {
           createProduct,
         };
       } catch (error) {
-        return errorResponse()
+        return errorResponse();
       }
     },
 
@@ -1225,6 +1249,129 @@ export const resolvers = {
         product: updatedProduct,
       };
     },
+
+    // ================================================START CUSTOMER ORDER PRODUCT MUTATION=======================================
+    // createCustomerOrderProduct:async(_,{input},{user})=>{
+    //   try {
+    //     const subTotal = 0;
+    //   const items = await Promise.all(
+    //     input.items.map((item)=>{
+    //       const product =  Product.findById(item.productId)
+    //       if(!product){
+    //         throw new GraphQLError("Product not found");
+    //       }
+    //       let total = item.price * item.quantity
+    //       subTotal += total
+
+    //       return{
+    //         product: product._id,
+    //         quantity: item.quantity,
+    //         price: product.price,
+    //         total
+    //       }
+    //     })
+    //   )
+
+    //   const grandTotal =
+    //   subTotal + (input.tax || 0) + (input.deliveryFee || 0) - (input.discount || 0)
+
+    //   const newOrder = new Order({
+    //     customer: input.customer,
+    //     restaurant:input.restaurant,
+    //     items,
+    //     deliveryAddress:input.deliveryAddress,
+    //     deliveryFee:input.deliveryFee,
+    //     discount: input.discount,
+    //     tax: input.tax,
+    //     totalPrice:total,
+    //     grandTotal,
+    //     paymentMethod:input.paymentMethod,
+    //     payments: input.payments,
+    //     status:input.status,
+    //     remark: input.remark
+    //   })
+    //   const orderSave =  await newOrder.save()
+    //   return {
+    //     ...successResponse(),
+    //     orderSave
+    //   }
+    //   } catch (error) {
+    //     console.log("createCustomerOrderProduct",createCustomerOrderProduct)
+    //     return errorResponse()
+    //   }
+
+    // },
+    createCustomerOrderProduct: async (_, { input }, { user }) => {
+      try {
+        let subTotal = 0;
+
+        console.log("Creating order with input:", input);
+
+        const items = await Promise.all(
+          input.items.map(async (item) => {
+            if (!item.product) {
+              throw new GraphQLError("Product ID is required for each item");
+            }
+
+            const product = await Product.findById(item.product);
+            if (!product) {
+              throw new GraphQLError(
+                `Product not found with ID: ${item.product}`
+              );
+            }
+
+            const total = item.price * item.quantity;
+            subTotal += total;
+
+            return {
+              product: product._id,
+              quantity: item.quantity,
+              price: item.price,
+              total: total,
+            };
+          })
+        );
+
+        const taxAmount = input.tax || 0;
+        const deliveryFee = input.deliveryFee || 0;
+        const discountAmount = input.discount || 0;
+
+        const grandTotal = subTotal + taxAmount + deliveryFee - discountAmount;
+
+        const newOrder = new Order({
+          customer: input.customer || {},
+          shop: input.shopId || null,
+          restaurant: input.restaurant || {},
+          items: items,
+          deliveryAddress: input.deliveryAddress || {},
+          deliveryFee: deliveryFee,
+          discount: discountAmount,
+          tax: taxAmount,
+          totalPrice: subTotal,
+          grandTotal: grandTotal,
+          paymentMethod: input.paymentMethod || "cash",
+          payments: input.payments || [],
+          status: input.status || "PENDING",
+          remark: input.remark || "",
+        });
+
+        const savedOrder = await newOrder.save();
+
+        const populatedOrder = await Order.findById(savedOrder._id)
+          .populate("items.product")
+          .populate("payments.order");
+
+        return {
+          ...successResponse(),
+          order: populatedOrder,
+        };
+      } catch (error) {
+        console.error("createCustomerOrderProduct error:", error);
+
+        return errorResponse();
+      }
+    },
+    // ================================================START CUSTOMER ORDER PRODUCT MUTATION=======================================
 
     //==================================================Owner Product CRUD==================================================
     createProductForOwner: async (_, { input }, { user }) => {
@@ -1313,7 +1460,7 @@ export const resolvers = {
           product: createdProduct,
         };
       } catch (error) {
-        return errorResponse()
+        return errorResponse();
       }
     },
     createProductForShop: async (_, { input }, { user }) => {
@@ -1617,7 +1764,7 @@ export const resolvers = {
             .replace(/[^\u1780-\u17FF\w-]+/g, "");
         const category = new Category({
           name: input.name,
-          nameKh:input.nameKh,
+          nameKh: input.nameKh,
           slug,
           description: input.description || "",
           image: input.image || "",
@@ -1673,6 +1820,7 @@ export const resolvers = {
           category,
         };
       } catch (error) {
+        console.log("error",error)
         return errorResponse();
       }
     },
@@ -1935,20 +2083,20 @@ export const resolvers = {
         .populate("items.product");
     },
 
-    createPurchaseOrderForShop: async (_, { input,shopId }, { user }) => {
+    createPurchaseOrderForShop: async (_, { input, shopId }, { user }) => {
       if (!user) {
-        throw new Error('Authentication required');
+        throw new Error("Authentication required");
       }
       try {
         const poNumber = generatePONumber();
         const owner = user.role === "Admin" ? null : user.id;
-       
+
         const purChaseOrder = new PurchaseOrder({
           ...input,
           owner,
           shop: shopId || null,
           poNumber,
-          orderedBy: user.id 
+          orderedBy: user.id,
         });
         const savedPO = await purChaseOrder.save();
         const populatedPO = await PurchaseOrder.findById(savedPO._id)
@@ -1960,13 +2108,12 @@ export const resolvers = {
         return {
           ...successResponse(),
           purchaseOrder: populatedPO,
-        }
+        };
       } catch (error) {
         console.error("Create Purchase Order Error:", error);
         return errorResponse(error.message);
       }
     },
-
 
     updatePurchaseOrderStatus: async (_, { id, status }, { user }) => {
       requireRole(user, ["Admin", "Manager", "StockKeeper"]);

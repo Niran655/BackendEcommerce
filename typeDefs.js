@@ -119,72 +119,65 @@ export const typeDefs = `#graphql
     }
 
     #Order
-    type Order {
-      id: ID!
-      customer: Customer
-      restaurant: Restaurant
-      items: [OrderItem]
-      deliveryAddress: String
-      deliveryFee: Float
-      discount: Float
-      tax: Float
-      totalPrice: Float       
-      grandTotal: Float        
-      paymentMethod: String
-      payments: [Payment]      
-      status: OrderStatus
-      createdAt: Date
-      updatedAt: Date
-      remark: String
-    }
+      type Order {
+        id: ID!
+        shop:Shop
+        customer: Customer
+        restaurant: Restaurant
+        items: [OrderItem]
+        deliveryAddress: Address
+        deliveryFee: Float
+        discount: Float
+        tax: Float
+        totalPrice: Float       
+        grandTotal: Float        
+        paymentMethod: String
+        payments: [Payment]      
+        status: OrderStatus
+        createdAt: Date
+        updatedAt: Date
+        remark: String
+      }
 
-    type Payment {
-      id: ID!
-      order: Order
-      paidAmount: Float
-      paymentMethod: String
-      status: PaymentStatus
-      transactionId: String
-      createdAt: Date
-    }
+      type Payment {
+        id: ID!
+        order: Order
+        paidAmount: Float
+        paymentMethod: String
+        status: PaymentStatus
+        transactionId: String
+        createdAt: Date
+      }
 
-    type Customer {
-      id: ID!
-      firstName: String
-      lastName: String
-      phone: String
-      email: String
-    }
+      type Customer {
+        id: ID!
+        firstName: String
+        lastName: String
+        phone: String
+        email: String
+      }
 
-    type Restaurant {
-      id: ID!
-      name: String
-      address: String
-      phone: String
-    }
+      type Restaurant {
+        id: ID!
+        name: String
+        address: String
+        phone: String
+      }
 
-    type OrderItem {
-      product: Product
-      quantity: Int
-      price: Float    
-      total: Float    
-    }
+      type OrderItem {
+        product: Product
+        quantity: Int
+        price: Float    
+        total: Float    
+      }
 
-    enum OrderStatus {
-      PENDING
-      CONFIRMED
-      PREPARING
-      ON_THE_WAY
-      DELIVERED
-      CANCELLED
-    }
+      type Address {
+        formatted: String,
+        latitude: Float,
+        longitude: Float,
+      }
 
-    enum PaymentStatus {
-      PENDING
-      SUCCESS
-      FAILED
-      REFUNDED
-    }
+
 
 
 
@@ -357,6 +350,22 @@ export const typeDefs = `#graphql
       adjustment
     }
 
+    enum OrderStatus {
+        PENDING
+        CONFIRMED
+        PREPARING
+        ON_THE_WAY
+        DELIVERED
+        CANCELLED
+    }
+
+    enum PaymentStatus {
+        PENDING
+        SUCCESS
+        FAILED
+        REFUNDED
+    }
+
     type PaginatorMeta {
       slNo: Int!
       prev: Int
@@ -526,6 +535,63 @@ export const typeDefs = `#graphql
       active: Boolean
     }
 
+    input OrderInput {
+      customer: CustomerInput
+      shopId:ID
+      restaurant: RestaurantInput
+      items: [OrderItemInput!]!
+      deliveryAddress: AddressInput
+      deliveryFee: Float
+      discount: Float
+      tax: Float
+      totalPrice: Float
+      grandTotal: Float
+      paymentMethod: String
+      payments: [PaymentInput]
+      status: OrderStatus
+      remark: String
+    }
+
+    input PaymentInput {
+      # id: ID!
+      order: OrderInput
+      paidAmount: Float
+      paymentMethod: String
+      status: PaymentStatus
+      transactionId: String
+      createdAt: Date
+    }
+
+    input CustomerInput {
+      # id: ID!
+      firstName: String
+      lastName: String
+      phone: String
+      email: String
+    }
+
+    input RestaurantInput {
+      id: ID
+      name: String
+      address: String
+      phone: String
+    }
+
+    input OrderItemInput {
+      product: ID
+      defaultPrice:Float
+      quantity: Int
+      price: Float
+      total: Float
+    }
+
+    input AddressInput {
+      formatted: String,
+      latitude: Float,
+      longitude: Float,
+    }
+
+
     input SaleInput {
       items: [SaleItemInput!]!
       subtotal: Float!
@@ -653,6 +719,12 @@ export const typeDefs = `#graphql
       sale(id: ID!): Sale
       salesByDateRange(startDate: Date!, endDate: Date!): [Sale!]!
 
+      # ==========================================START CUSTMER ORDER QUERY================================
+
+      getOrderForShop(shopId:ID):[Order]
+      getAllOrder:[Order]
+
+      # ==========================================START CUSTMER ORDER QUERY================================
       #============================START SUPPLIER QUERY==============================
       # Suppliers
       suppliers: [Supplier!]!
@@ -736,6 +808,11 @@ export const typeDefs = `#graphql
       # updateProductForOwner(id:ID!,input:ProductInput): MutationResponse!
   
       #====================================================================================================#
+
+      #=========================================START CUSTOMER ORDER PRODUCT==================================
+      createCustomerOrderProduct(input: OrderInput): MutationResponse!
+      #==========================================END CUSTOMER ORDER PRODUCT==================================
+
       #===========================================START SALES MUTATION=======================
       # Sales
       createSale(input: SaleInput!): Sale!
