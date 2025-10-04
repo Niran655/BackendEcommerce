@@ -442,7 +442,7 @@ export const resolvers = {
         .populate("cashier")
         .populate("items.product");
     },
-
+    // ==================================START ORDER QUERY============================================
     getAllOrder: async () => {
       try {
         const orders = await Order.find().populate("items.product");
@@ -454,13 +454,28 @@ export const resolvers = {
     },
     getOrderForShop: async (_, { shopId }) => {
       try {
-        const orders = await Order.find({ shop: shopId }).populate("items.product");
-        return orders; 
+        const orders = await Order.find({
+          shop: shopId,
+          status: "PENDING",
+        }).populate("items.product");
+        return orders;
       } catch (error) {
         console.error("កំហុសក្នុងការទាញយក order:", error);
         throw new Error("មិនអាចយក order បានទេ");
       }
     },
+    getOrderComplete: async (_, { shopId, status }) => {
+      try {
+        const orderComplete = await Order.find({
+          shop: shopId,
+          status: status,
+        }).populate("items.product");
+        return orderComplete;
+      } catch (error) {
+        throw new Error("មិនអាចយក order បានទេ");
+      }
+    },
+    // ===============================END ORDER QUERY=================================================
     //======================================START SUPPLIER QUERY=====================================
     suppliers: async (_, __, { user }) => {
       requireRole(user, ["Admin", "Manager", "StockKeeper"]);
@@ -1371,6 +1386,25 @@ export const resolvers = {
         return errorResponse();
       }
     },
+    updateOrderStatus: async (_, { orderId, status }) => {
+      try {
+        const updateStatus = await Order.findByIdAndUpdate(
+          orderId,
+          { status },
+          { new: true }
+        );
+
+        if (!updateStatus) {
+          throw new Error("រកមិនឃើញ Order ទេ");
+        }
+        return {
+          ...successResponse(),
+          updateStatus,
+        };
+      } catch (error) {
+        return errorResponse();
+      }
+    },
     // ================================================START CUSTOMER ORDER PRODUCT MUTATION=======================================
 
     //==================================================Owner Product CRUD==================================================
@@ -1820,7 +1854,7 @@ export const resolvers = {
           category,
         };
       } catch (error) {
-        console.log("error",error)
+        console.log("error", error);
         return errorResponse();
       }
     },

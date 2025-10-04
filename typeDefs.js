@@ -177,10 +177,6 @@ export const typeDefs = `#graphql
         longitude: Float,
       }
 
-
-
-
-
     type Banner {
         id:ID!
         category: String,
@@ -357,6 +353,7 @@ export const typeDefs = `#graphql
         ON_THE_WAY
         DELIVERED
         CANCELLED
+        COMPLETED
     }
 
     enum PaymentStatus {
@@ -723,16 +720,17 @@ export const typeDefs = `#graphql
 
       getOrderForShop(shopId:ID):[Order]
       getAllOrder:[Order]
+      getOrderComplete(shopId: ID, status: OrderStatus): [Order]
 
       # ==========================================START CUSTMER ORDER QUERY================================
-      #============================START SUPPLIER QUERY==============================
+      #============================START SUPPLIER QUERY====================================================
       # Suppliers
       suppliers: [Supplier!]!
       supplier(id: ID!): Supplier
       getSuppliersForShop(shopId:ID):[Supplier]
       getSupplierPaginationForShop(page: Int, limit: Int, pagination: Boolean, keyword: String, shopId:ID): SupplierPaginator
 
-      #================================END SUPPLIER QUERY=================================
+      #================================END SUPPLIER QUERY===================================================
       # Purchase Orders
       purchaseOrders: [PurchaseOrder!]!
       purchaseOrder(id: ID!): PurchaseOrder
@@ -811,6 +809,7 @@ export const typeDefs = `#graphql
 
       #=========================================START CUSTOMER ORDER PRODUCT==================================
       createCustomerOrderProduct(input: OrderInput): MutationResponse!
+      updateOrderStatus(orderId:ID,status:OrderStatus): MutationResponse 
       #==========================================END CUSTOMER ORDER PRODUCT==================================
 
       #===========================================START SALES MUTATION=======================
