@@ -735,6 +735,7 @@ export const typeDefs = `#graphql
       purchaseOrders: [PurchaseOrder!]!
       purchaseOrder(id: ID!): PurchaseOrder
       getPurchaseOrderWithPagination(shopId:ID,page: Int, limit: Int, pagination: Boolean, keyword: String):purchaseOrderPaginator
+      getPurchaseOrderForShop(shopId:ID):[PurchaseOrder]
       
       #================================START STOCK MOVEMENT==================================================
       # Stock Movements
@@ -749,7 +750,7 @@ export const typeDefs = `#graphql
       # Dashboard 
       dashboardStats: DashboardStats!
       dashboardStatsForShop(shopId:ID):DashboardStats!
-      #Reports
+      #Reports 
       salesReport(startDate: Date!, endDate: Date!): SalesReport!
       salesReportForShop(startDate: Date!, endDate: Date!, shopId: ID): SalesReport
       #===============================END DASHBOARD AND REPORTS QUERY==========================================
@@ -831,5 +832,6 @@ export const typeDefs = `#graphql
       createPurchaseOrderForShop(input:PurchaseOrderInput,shopId:ID): MutationResponse!
       updatePurchaseOrderStatus(id: ID!, status: POStatus!): MutationResponse
       receivePurchaseOrder(id: ID!): PurchaseOrder!
+      receivePurchaseOrderForShop(shopId:ID,id:ID):MutationResponse
     }
   `;
