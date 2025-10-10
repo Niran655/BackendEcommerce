@@ -172,7 +172,9 @@ export const resolvers = {
           ownerId = user.id;
         }
 
-        const shops = await Shop.find({ owner: ownerId }).populate("owner");
+        const shops = await Shop.find({ owner: ownerId })
+          .populate("owner")
+          .populate("type");
         return shops || [];
       } catch (error) {
         throw new Error(`Failed to fetch shops: ${error.message}`);
@@ -222,7 +224,7 @@ export const resolvers = {
     },
 
     getProductsForShop: async (_, { shopId }, { user }) => {
-      requireRole(user, ["Seller"]);
+      // requireRole(user, ["Seller"]);
       if (user.role === "Seller") {
         const shop = await Shop.findOne({ _id: shopId, owner: user._id });
         if (!shop) {
@@ -353,7 +355,7 @@ export const resolvers = {
       { page = 1, limit = 10, pagination = true, keyword = "", shopId },
       { user }
     ) => {
-      //  requireRole(user,["Seller"])
+      requireRole(user, ["Seller"]);
       try {
         const query = {
           active: true,
@@ -546,6 +548,7 @@ export const resolvers = {
         page,
         limit,
         pagination,
+        populate: ["User"],
       });
 
       return {
@@ -583,49 +586,40 @@ export const resolvers = {
         .populate("items.product")
         .sort({ createdAt: -1 });
     },
-    getPurchaseOrderWithPagination: async (
+
+    getPurchaseOrderForShopWithPagination: async (
       _,
-      {shopId,   page = 1, limit = 10, pagination = true, keyword = "" },
+      { shopId, page = 1, limit = 10, pagination = true, keyword = "" },
       { user }
     ) => {
+      requireRole(user, ["Seller"]);
       try {
         const query = {
           shop: shopId,
           ...(keyword && {
-            $or: [
-              { poNumber: { $regex: keyword, $options: "i" } },
-              { notes: { $regex: keyword, $options: "i" } },
-              { "items.name": { $regex: keyword, $options: "i" } },
-            ],
+            $or: [{ poNumber: { $regex: keyword, $options: "i" } }],
           }),
         };
 
-        const mongooseQuery =  PurchaseOrder.find(query)
-        .populate("supplier")
-        .populate("orderedBy")
-        .populate("items.product")
-        .sort({ createdAt: -1 });
-
-        
-      if (pagination) {
-        mongooseQuery.skip((page - 1) * limit).limit(limit);
-      }
-      const data = await mongooseQuery.exec();
-      const total = await PurchaseOrder.countDocuments(query);
-      const paginator = {
-        totalDocs: total, 
-        currentPage: page,
-        totalPages: Math.ceil(total / limit),
-        hasNextPage: page * limit < total,
-        hasPrevPage: page > 1,
-      };
-      return {
-        data,
-        paginator: pagination ? paginator : null,
-      };
+        const paginationQuery = await paginateQuery({
+          model: PurchaseOrder,
+          query,
+          page,
+          limit,
+          pagination,
+          populate: [
+            { path: "supplier" },
+            { path: "items" },
+            { path: "shop" },
+            { path: "orderedBy" },
+          ],
+        });
+        return {
+          data: paginationQuery.data || [],
+          paginator: paginationQuery?.paginator || [],
+        };
       } catch (error) {
         console.log("Error", error);
-        throw new Error("Failed to fetch purchase orders");
       }
     },
 
@@ -640,49 +634,7 @@ export const resolvers = {
         .limit(100);
       return movements.filter((m) => m.user);
     },
-    getStockMovementsWithPagination: async (
-      _,
-      { page = 1, limit = 10, pagination = true, keyword = "", productId },
-      { user }
-    ) => {
-      requireRole(user, ["Admin", "Manager", "StockKeeper", "Seller"]);
 
-      try {
-        const query = {
-          ...(productId && { product: productId }),
-          ...(keyword && {
-            $or: [{ name: { $regex: keyword, $options: "i" } }],
-          }),
-        };
-
-        const mongooseQuery = StockMovement.find(query)
-          .populate("product")
-          .populate("type")
-          .populate("user")
-          .sort({ createdAt: -1 })
-          .limit(100)
-
-        if (pagination) {
-          mongooseQuery.skip((page - 1) * limit).limit(limit);
-        }
-
-        const data = await mongooseQuery.exec();
-        const total = await Product.countDocuments(query);
-        const paginator = {
-          totalDocs: total,
-          currentPage: page,
-          totalPages: Math.ceil(total / limit),
-          hasNextPage: page * limit < total,
-          hasPrevPage: page > 1,
-        };
-        return {
-          data,
-          paginator: pagination ? paginator : null,
-        };
-      } catch (error) {
-        return errorResponse();
-      }
-    },
     getStockMovementsByShop: async (_, { productId, shopId }, { user }) => {
       requireRole(user, ["Seller"]);
 
@@ -718,7 +670,7 @@ export const resolvers = {
       },
       { user }
     ) => {
-      // requireRole(user,["Seller"])
+      requireRole(user, ["Seller"]);
       try {
         const filter = {};
         if (productId) filter.product = productId;
@@ -729,37 +681,33 @@ export const resolvers = {
         }
         const query = {
           ...filter,
-          active: true,
           shop: shopId,
           ...(keyword && {
-            $or: [{ name: { $regex: keyword, $options: "i" } }],
+            $or: [
+              { reason: { $regex: keyword, $options: "i" } },
+              { reference: { $regex: keyword, $options: "i" } },
+            ],
           }),
         };
-
-          const mongooseQuery = await StockMovement.find(query)
-          .populate("product")
-          .populate("type")
-          .populate("user")
-          .sort({ createdAt: -1 });
-         if (pagination) {
-          mongooseQuery.skip((page - 1) * limit).limit(limit);
-        }
-
-        const data = await mongooseQuery.exec();
-        const total = await Product.countDocuments(query);
-        const paginator = {
-          totalDocs: total,
-          currentPage: page,
-          totalPages: Math.ceil(total / limit),
-          hasNextPage: page * limit < total,
-          hasPrevPage: page > 1,
-        };
+        const paginationQuery = await paginateQuery({
+          model: StockMovement,
+          query,
+          page,
+          limit,
+          pagination,
+          populate: [
+            { path: "product", select: " name price image" },
+            { path: "user", select: " name email" },
+            { path: "shop", select: "name location" },
+          ],
+        });
         return {
-          data,
-          paginator: pagination ? paginator : null,
+          data: paginationQuery.data,
+          paginator: paginationQuery.paginator,
         };
       } catch (error) {
-        console.log("Errro", error);
+        console.error("Error in getStockMovementsByshopWithPagination:", error);
+        throw new Error("មានបញ្ហាក្នុងការទាញយកស្តុក។ សូមពិនិត្យឡើងវិញ។");
       }
     },
     // ==================================END STOCK MOVEMENT QUERY===================================
@@ -869,9 +817,134 @@ export const resolvers = {
         })),
       };
     },
+    dashboardStatsForAdmin: async (_, { user }) => {
+      // requireRole(user, ["Admin"]);
+      // const totalProductAggregation = await Product.aggregate([
+      //   { $match: { active: true } },
+      //   {
+      //     $group: {
+      //       _id: null,
+      //       totalStock: { $sum: "$stock" }
+      //     }
+      //   }
+      // ]);
+      // const totalProduct = totalProductAggregation[0]?.totalStock || 0;
+
+      //total product
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const totalProduct = await Product.countDocuments({ active: true });
+
+      const totalNewUser = await User.countDocuments({
+        createdAt: { $gte: today, $lt: tomorrow },
+        role: "User",
+      });
+
+      const totalNewOrder = await Order.countDocuments({
+        createdAt: { $gte: today, $lt: tomorrow },
+      });
+
+      const totalSold = await Sale.countDocuments({
+        createdAt: { $gte: today, $lt: tomorrow },
+        status: "completed",
+      });
+
+      const topProducts = await Sale.aggregate([
+        { $match: { status: "completed" } },
+        { $unwind: "$items" },
+        {
+          $group: {
+            _id: "$items.product",
+            quantitySold: { $sum: "$items.quantity" },
+            revenue: { $sum: "$items.total" },
+          },
+        },
+        { $sort: { quantitySold: -1 } },
+        { $limit: 10 },
+        {
+          $lookup: {
+            from: "products",
+            localField: "_id",
+            foreignField: "_id",
+            as: "product",
+          },
+        },
+        { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
+      ]);
+
+      const topCategories = await Sale.aggregate([
+        { $match: { status: "completed" } },
+        { $unwind: "$items" },
+        {
+          $lookup: {
+            from: "products",
+            localField: "items.product",
+            foreignField: "_id",
+            as: "productData",
+          },
+        },
+        { $unwind: "$productData" },
+        {
+          $group: {
+            _id: "$productData.category",
+            totalProduct: { $sum: 1 },
+            totalRevenue: { $sum: "$items.total" },
+          },
+        },
+        { $sort: { totalProduct: -1 } },
+        { $limit: 10 },
+      ]);
+
+      const hourlySales = await Sale.aggregate([
+        {
+          $match: { status: "completed" },
+        },
+        {
+          $group: {
+            _id: { $hour: "$createdAt" },
+            sales: { $sum: "$total" },
+            transactions: { $sum: 1 },
+          },
+        },
+        {
+          $sort: { _id: 1 },
+        },
+      ]);
+
+      const topCategoriesData = topCategories
+        .filter((tc) => tc._id)
+        .map((tc) => ({
+          product: { category: tc._id },
+          totalProduct: tc.totalProduct,
+          totalRevenue: tc.totalRevenue,
+        }));
+
+      return {
+        totalProduct,
+        totalNewUser,
+        totalNewOrder,
+        totalSold,
+        topProducts: topProducts
+          .filter((tp) => tp.product)
+          .map((tp) => ({
+            product: tp.product,
+            quantitySold: tp.quantitySold,
+            revenue: tp.revenue,
+          })),
+        topCategories: topCategoriesData,
+        hourlySales: hourlySales.map((hs) => ({
+          hour: hs._id,
+          sales: hs.sales,
+          transactions: hs.transactions,
+        })),
+      };
+    },
 
     dashboardStatsForShop: async (_, { shopId }, { user }) => {
-      requireRole(user, ["Seller"]);
+      // requireRole(user, ["Seller"]);
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -939,7 +1012,6 @@ export const resolvers = {
         { $sort: { _id: 1 } },
       ]);
 
-      // Low stock items
       const lowStockItems = await Product.find({
         active: true,
         "shops.shop": shopObjectId,
@@ -1117,17 +1189,47 @@ export const resolvers = {
 
       const token = jwt.sign(
         { userId: user.id },
-        "Ni0sdfg4325sfwesfer432sdfg_0089@IT",
+        process.env.JWT_SECRET || "Ni0sdfg4325sfwesfer432sdfg_0089@IT",
         {
           expiresIn: "24h",
         }
       );
-      //  const token = jwt.sign(payload, "Ni0sdfg4325sfwesfer432sdfg_0089@IT", { expiresIn: '1d' });
-      // console.log("JWT_SECRET:", "Ni0sdfg4325sfwesfer432sdfg_0089@IT");
       return {
         token,
         user,
       };
+    },
+
+    loginWithGoogle: async (_, { email, name }) => {
+      if (!email) {
+        throw new GraphQLError("Email is required");
+      }
+
+      let user = await User.findOne({ email });
+
+      if (!user) {
+        const randomPassword = Math.random().toString(36).slice(-12);
+        user = new User({
+          name: name || email.split("@")[0],
+          email,
+          password: randomPassword,
+          role: "User",
+          active: true,
+          lastLogin: new Date(),
+        });
+        await user.save();
+      } else {
+        user.lastLogin = new Date();
+        await user.save();
+      }
+
+      const token = jwt.sign(
+        { userId: user.id },
+        process.env.JWT_SECRET || "Ni0sdfg4325sfwesfer432sdfg_0089@IT",
+        { expiresIn: "24h" }
+      );
+
+      return { token, user };
     },
 
     register: async (_, { input }) => {
@@ -1151,12 +1253,20 @@ export const resolvers = {
 
     createUser: async (_, { input }, { user }) => {
       requireRole(user, ["Admin", "Manager"]);
-      const existingUser = await User.findOne({ email: input.email });
-      if (existingUser) {
-        throw new GraphQLError("User with this email already exists");
+      try {
+        const existingUser = await User.findOne({ email: input.email });
+        if (existingUser) {
+          throw new GraphQLError("User with this email already exists");
+        }
+        const newUser = new User(input);
+        const newUserSave = await newUser.save();
+        return {
+          ...successResponse(),
+          newUserSave,
+        };
+      } catch (error) {
+        return errorResponse();
       }
-      const newUser = new User(input);
-      return await newUser.save();
     },
 
     updateUser: async (_, { id, input }, { user }) => {
@@ -1208,7 +1318,7 @@ export const resolvers = {
         if (!deleted) {
           throw new Error("ហាងមិនមានទេ");
         }
-        return successResponse("លុបហាងបានជោគជ័យ");
+        return successResponse();
       } catch (error) {
         console.error("Delete shop error:", error);
         return errorResponse();
@@ -1225,19 +1335,13 @@ export const resolvers = {
           throw new Error("Owner is not a valid seller");
         }
         function generateSlug(name) {
-          return name
-            .toLowerCase()
-            .trim()
-            .replace(/[^\p{L}\p{N}\s-]/gu, "")
-            .replace(/\s+/g, "-");
+          return name;
         }
 
         function generateCode() {
           const timestamp = Date.now().toString().slice(-6);
-          const random = Math.random()
-            .toString(36)
-            .substring(2, 6)
-            .toUpperCase();
+          const random = Math.random();
+
           return `SHOP-${timestamp}-${random}`;
         }
 
@@ -1254,10 +1358,10 @@ export const resolvers = {
           code,
         });
         await shop.save();
-
         await shop.populate("owner");
         return successResponse();
       } catch (error) {
+        console.log("error", error);
         return errorResponse(
           error.message || "Unknown error",
           "កំហុសក្នុងការបង្កើតហាងសម្រាប់អ្នកលក់"
@@ -1980,6 +2084,54 @@ export const resolvers = {
       return await Product.findById(productId).populate("comboItems.product");
     },
 
+    adjustStockForShop: async (
+      _,
+      { productId, shopId, quantity, reason },
+      { user }
+    ) => {
+      // requireRole(user, ["StockKeeper", "Seller"]);
+      try {
+        const product = await Product.findById(productId);
+        if (!product) {
+          throw new GraphQLError("Product not found");
+        }
+
+        const shop = await Shop.findById(shopId);
+        if (!shop) {
+          throw new GraphQLError("Shop not found");
+        }
+
+        const previousStock = product.stock;
+        const newStock = previousStock + quantity;
+
+        if (newStock < 0) {
+          throw new GraphQLError("Insufficient stock");
+        }
+
+        product.stock = newStock;
+        product.updatedAt = new Date();
+        await product.save();
+
+        const stockMovement = new StockMovement({
+          product: productId,
+          type: quantity > 0 ? "in" : "out",
+          quantity: Math.abs(quantity),
+          reason,
+          shop: shopId,
+          user: user.id,
+          previousStock,
+          newStock,
+        });
+        console.log("stockMovement", stockMovement);
+        await stockMovement.save();
+
+        return await Product.findById(productId).populate("comboItems.product");
+      } catch (error) {
+        console.log("Error", error);
+        //  return errorResponse()
+      }
+    },
+
     createSale: async (_, { input }, { user }) => {
       requireRole(user, ["Admin", "Manager", "Cashier", "Seller"]);
       const saleNumber = generateSaleNumber();
@@ -2027,7 +2179,7 @@ export const resolvers = {
     },
 
     refundSale: async (_, { id }, { user }) => {
-      requireRole(user, ["Admin", "Manager"]);
+      requireRole(user, ["Admin", "Manager", "Seller"]);
 
       const sale = await Sale.findById(id);
       if (!sale) {
@@ -2285,7 +2437,6 @@ export const resolvers = {
       if (!shop || !shop.owner.equals(user._id)) {
         throw new GraphQLError("អ្នកមិនមានសិទ្ធិទទួលបញ្ជាទិញសម្រាប់ហាងនេះទេ។");
       }
-
       const po = await PurchaseOrder.findById(id).populate("items.product");
       if (!po) {
         throw new GraphQLError("រកមិនឃើញបញ្ជាទិញទេ។");
@@ -2294,7 +2445,6 @@ export const resolvers = {
       if (po.status === "received") {
         throw new GraphQLError("បញ្ជាទិញនេះបានទទួលរួចហើយ។");
       }
-
       for (const item of po.items) {
         const product = await Product.findById(item.product);
         if (product) {

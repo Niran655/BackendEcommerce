@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 
+
 const stockMovementSchema = new mongoose.Schema({
   product: {
     type: mongoose.Schema.Types.ObjectId,
@@ -21,5 +22,7 @@ const stockMovementSchema = new mongoose.Schema({
   newStock: { type: Number, required: true },
   createdAt: { type: Date, default: Date.now },
 });
+
+
 
 export default mongoose.model("StockMovement", stockMovementSchema);

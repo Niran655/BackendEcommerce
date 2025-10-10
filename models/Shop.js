@@ -10,7 +10,6 @@ const ShopSchema = new mongoose.Schema(
       required: true,
     },
     type: { type: mongoose.Schema.Types.ObjectId, ref: "Category",},
-    enName: { type: String, require: true },
     slug: { type: String, require: true },
     image: { type: String, require: true },
     code: { type: String, require: true },

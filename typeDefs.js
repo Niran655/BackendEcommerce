@@ -262,10 +262,26 @@ export const typeDefs = `#graphql
       hourlySales: [HourlySale!]!
     }
 
+    type DashboardStateForAdmin{
+      totalProduct: Int
+      totalNewUser:Int
+      totalNewOrder:Int
+      totalSold:Int,
+      topProducts:[TopProduct]
+      topCategories:[TopCategory]
+      hourlySales: [HourlySale]
+    }
+
     type TopProduct {
       product: Product!
       quantitySold: Int!
       revenue: Float!
+    }
+
+    type TopCategory{
+      product: Product
+      totalProduct:Int
+      totalRevenue: Int
     }
 
     type HourlySale {
@@ -414,9 +430,10 @@ export const typeDefs = `#graphql
     data: [StockMovement]
     paginator: PaginatorMeta
   }
+  
   type purchaseOrderPaginator{
     data: [PurchaseOrder]
-    pagination: PaginatorMeta
+    paginator: PaginatorMeta
   }
 
   # =================================================INPUT TYPE===========================================================================
@@ -447,7 +464,6 @@ export const typeDefs = `#graphql
     input ShopInput {
       owner: ID!
       shopName: String!
-      enName:String
       description: String
       image:String
       code:String
@@ -734,14 +750,13 @@ export const typeDefs = `#graphql
       # Purchase Orders
       purchaseOrders: [PurchaseOrder!]!
       purchaseOrder(id: ID!): PurchaseOrder
-      getPurchaseOrderWithPagination(shopId:ID,page: Int, limit: Int, pagination: Boolean, keyword: String):purchaseOrderPaginator
+      getPurchaseOrderForShopWithPagination(shopId:ID,page: Int, limit: Int, pagination: Boolean, keyword: String):purchaseOrderPaginator
       getPurchaseOrderForShop(shopId:ID):[PurchaseOrder]
-      
-      #================================START STOCK MOVEMENT==================================================
+      #================================START STOCK MOVEMENT==================== ==============================
       # Stock Movements
       stockMovements(productId: ID): [StockMovement]
+
       getStockMovementsByShop(productId:ID,shopId:ID):[StockMovement]
-      getStockMovementsWithPagination(productId: ID,page: Int, limit: Int, pagination: Boolean, keyword: String):StockMovementPaginator
       getStockMovementsByshopWithPagination(productId:ID, shopId:ID,page: Int, limit: Int, pagination: Boolean, keyword: String):StockMovementPaginator
 
       #================================END STOCK MOVEMENT===================================================
@@ -749,6 +764,7 @@ export const typeDefs = `#graphql
       #===============================START DASHBOARD AND REPORTS QUERY==========================================
       # Dashboard 
       dashboardStats: DashboardStats!
+      dashboardStatsForAdmin: DashboardStateForAdmin!
       dashboardStatsForShop(shopId:ID):DashboardStats!
       #Reports 
       salesReport(startDate: Date!, endDate: Date!): SalesReport!
@@ -759,6 +775,7 @@ export const typeDefs = `#graphql
       # Auth
       login(email: String!, password: String!): AuthPayload!
       register(input: UserInput!): AuthPayload!
+      loginWithGoogle(email: String!, name: String): AuthPayload!
 
       # Users
       createUser(input: UserInput!): MutationResponse
@@ -793,7 +810,7 @@ export const typeDefs = `#graphql
       updateProduct(id: ID!, input: ProductUpdateInput!):MutationResponse
       deleteProduct(id: ID!): MutationResponse
       adjustStock(productId: ID!, quantity: Int!, reason: String!): Product!
-      
+      adjustStockForShop(productId:ID!,shopId:ID!,quantity: Int!, reason: String!):MutationResponse!
       #owner
       createProductForOwner(input: ProductInput): MutationResponse!
       updateProductForOwner(productId:ID!,input:ProductInput):MutationResponse!
@@ -829,9 +846,12 @@ export const typeDefs = `#graphql
 
       # Purchase Orders
       createPurchaseOrder(input: PurchaseOrderInput!): PurchaseOrder! 
-      createPurchaseOrderForShop(input:PurchaseOrderInput,shopId:ID): MutationResponse!
+
       updatePurchaseOrderStatus(id: ID!, status: POStatus!): MutationResponse
       receivePurchaseOrder(id: ID!): PurchaseOrder!
+
+      createPurchaseOrderForShop(input:PurchaseOrderInput,shopId:ID): MutationResponse!
       receivePurchaseOrderForShop(shopId:ID,id:ID):MutationResponse
+   
     }
   `;
