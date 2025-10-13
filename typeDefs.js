@@ -5,12 +5,26 @@ export const typeDefs = `#graphql
       id: ID!
       name: String!
       email: String!
-      role: Role!
+      role: Role
       active: Boolean!
+        isVerified: Boolean!  
+         isSeller: Boolean! 
       lastLogin: Date
       createdAt: Date!
       updatedAt: Date!
     }
+    type RegisterResponse {
+      message: String!
+      email: String!
+
+    }
+
+    type VerifyResponse {
+      message: String!
+      token: String
+      user: User
+    }
+
     type Shop {
       id: ID!
       owner: User!
@@ -414,6 +428,11 @@ export const typeDefs = `#graphql
     hasNextPage: Boolean!
     totalDocs: Int!
   }
+
+  type UserForAdminPaginator{
+    data:[User]
+    paginator:PaginatorMeta
+  }
   type CategoryPaginator{
     data: [Category]
     paginator: PaginatorMeta
@@ -435,15 +454,29 @@ export const typeDefs = `#graphql
     data: [PurchaseOrder]
     paginator: PaginatorMeta
   }
+  type CategoryForAdminPaginator{
+    data:[Category]
+    paginator: PaginatorMeta
+  }
+
 
   # =================================================INPUT TYPE===========================================================================
 
     input UserInput {
+      name: String
+      email: String
+      password: String
+      active:Boolean
+      role: Role
+      isSeller: Boolean 
+    }
+
+    input RegisterInput {
       name: String!
       email: String!
       password: String!
-      active:Boolean!
-      role: Role!
+      active: Boolean   
+      role: String      
       isSeller: Boolean 
     }
 
@@ -690,6 +723,8 @@ export const typeDefs = `#graphql
       # Users
       users: [User!]!
       user(id: ID!): User
+      getAllUserWithPagination(page:Int, limit:Int, pagination:Boolean,keyword:String):UserForAdminPaginator
+
 
       myShops: [Shop!]!
       getShopsByOwnerId(id:ID!):[Shop]!
@@ -720,6 +755,7 @@ export const typeDefs = `#graphql
       getCategoriesForShopWithPagination(shopId:ID,page:Int,limit:Int, pagination: Boolean, keyword: String):CategoryPaginator
       getCategoryForOwner(owner:ID):[Category]
       getParentCategoryForAdmin:[Category]
+      getCategoriesForAdminWithPagination(page:Int,limit:Int, pagination: Boolean, keyword: String):CategoryForAdminPaginator
 
       #============================================END CATEGORY QUERY=================================================
       # Banner 
@@ -774,11 +810,14 @@ export const typeDefs = `#graphql
     type Mutation {
       # Auth
       login(email: String!, password: String!): AuthPayload!
-      register(input: UserInput!): AuthPayload!
+      # register(input: UserInput): AuthPayload!
       loginWithGoogle(email: String!, name: String): AuthPayload!
 
+      register(input: RegisterInput!): RegisterResponse!
+      verifyOTP(email: String!, otp: String!): VerifyResponse!
       # Users
-      createUser(input: UserInput!): MutationResponse
+      createUser(input: UserInput): MutationResponse
+      
       updateUser(id: ID!, input: UserUpdateInput!): User!
       deleteUser(id: ID!): Boolean!
 
@@ -797,7 +836,7 @@ export const typeDefs = `#graphql
       createCategory(input:CategoryInput) : MutationResponse  
       updateCategory(id:ID!, input:CategoryInput): MutationResponse
       deleteCategory(id:ID!):MutationResponse
-
+      
       #banner
       createBanner(input:BannerInput):MutationResponse
       updateBanner(id:ID!,input:BannerInput) :MutationResponse

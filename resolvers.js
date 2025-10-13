@@ -7,8 +7,10 @@ import { use } from "react";
 import PurchaseOrder from "./models/PurchaseOrder.js";
 import StockMovement from "./models/StockMovement.js";
 import paginateQuery from "./utils/paginateQuery.js";
+import { generateOTP } from "./utils/generateOTP.js";
 import Category from "./models/Category.js";
 import Supplier from "./models/Supplier.js";
+import { sendEmail } from "./utils/sendEmail.js";
 import Product from "./models/Product.js";
 import { errorResponse, successResponse } from "./utils/response.js";
 import Banner from "./models/Banner.js";
@@ -95,7 +97,6 @@ export const resolvers = {
   Product: {
     mainStock: (product) => {
       const ms = product.mainStock;
-      // ប្រសិនបើ mainStock ជា array → គណនាសម្រាប់ធាតុនីមួយៗ
       if (Array.isArray(ms)) {
         return ms.map((item) => {
           const quantity =
@@ -110,7 +111,6 @@ export const resolvers = {
         });
       }
 
-      // ប្រសិនបើ mainStock ជា object ឬមិនមាន → fallback logic
       const quantity =
         typeof ms?.quantity === "number"
           ? ms.quantity
@@ -146,6 +146,35 @@ export const resolvers = {
     user: async (_, { id }, { user }) => {
       requireRole(user, ["Admin", "Manager"]);
       return await User.findById(id);
+    },
+    getAllUserWithPagination: async (
+      _,
+      { page = 1, limit = 10, pagination = true, keyword = "" },
+      { user }
+    ) => {
+      requireRole(user, ["Admin"]);
+      const query = {
+        active: true,
+        ...(keyword && {
+          $or: [
+            { name: { $regex: keyword, $options: "i" } },
+            { email: { $regex: keyword, $options: "i" } },
+          ],
+        }),
+      };
+
+      const paginationQuery = await paginateQuery({
+        model: User,
+        query,
+        page,
+        limit,
+        pagination,
+      });
+
+      return {
+        data: paginationQuery.data,
+        paginator: paginationQuery.paginator,
+      };
     },
 
     myShops: async (_, __, { user }) => {
@@ -224,13 +253,13 @@ export const resolvers = {
     },
 
     getProductsForShop: async (_, { shopId }, { user }) => {
-      // requireRole(user, ["Seller"]);
-      if (user.role === "Seller") {
-        const shop = await Shop.findOne({ _id: shopId, owner: user._id });
-        if (!shop) {
-          throw new GraphQLError("You don't have permission to view this shop");
-        }
-      }
+      // requireRole(user, ["Seller","User"]);
+      // if (user.role === "Seller") {
+      //   const shop = await Shop.findOne({ _id: shopId, owner: user._id });
+      //   if (!shop) {
+      //     throw new GraphQLError("You don't have permission to view this shop");
+      //   }
+      // }
 
       return await Product.find({
         shops: { $elemMatch: { shop: shopId, isVisible: true } },
@@ -410,6 +439,32 @@ export const resolvers = {
         console.error("Admin parent category query error:", error);
         return [];
       }
+    },
+
+    getCategoriesForAdminWithPagination: async (
+      _,
+      { page = 1, limit = 10, pagination = true, keyword = "" },
+      { user }
+    ) => {
+      requireRole(user, ["Admin"]);
+      const query = {
+        active: true,
+        ...(keyword && {
+          $or: [{ name: { $regex: keyword, $options: "i" } }],
+        }),
+      };
+
+      const paginationQuery = await paginateQuery({
+        model: Category,
+        query,
+        page,
+        limit,
+        pagination,
+      });
+      return {
+        data: paginationQuery.data,
+        paginator: paginationQuery.paginator,
+      };
     },
 
     //==================================END CATGORY QUERY=============================================
@@ -1178,7 +1233,6 @@ export const resolvers = {
       if (!user) {
         throw new GraphQLError("Invalid credentials");
       }
-
       const isValid = await user.comparePassword(password);
       if (!isValid) {
         throw new GraphQLError("Invalid credentials");
@@ -1199,14 +1253,11 @@ export const resolvers = {
         user,
       };
     },
-
     loginWithGoogle: async (_, { email, name }) => {
       if (!email) {
         throw new GraphQLError("Email is required");
       }
-
       let user = await User.findOne({ email });
-
       if (!user) {
         const randomPassword = Math.random().toString(36).slice(-12);
         user = new User({
@@ -1229,26 +1280,102 @@ export const resolvers = {
         { expiresIn: "24h" }
       );
 
+      console.log("loginWithGoogle response:", { token, user });
+
       return { token, user };
     },
 
     register: async (_, { input }) => {
-      const existingUser = await User.findOne({ email: input.email });
-      if (existingUser) {
-        throw new GraphQLError("User with this email already exists");
+      try {
+        const existingUser = await User.findOne({ email: input.email });
+
+        if (existingUser && existingUser.isVerified) {
+          throw new GraphQLError("User with this email already exists");
+        }
+        const otp = generateOTP();
+        const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+        let user;
+        if (existingUser) {
+          existingUser.otp = otp;
+          existingUser.otpExpiresAt = otpExpiresAt;
+          existingUser.password = input.password;
+          await existingUser.save();
+          user = existingUser;
+        } else {
+          user = new User({
+            name: input.name,
+            email: input.email,
+            password: input.password,
+            role: input.role || "User",
+            active: input.active !== undefined ? input.active : false,
+            isSeller: input.isSeller || false,
+            otp: otp,
+            otpExpiresAt: otpExpiresAt,
+            isVerified: false,
+          });
+          await user.save();
+        }
+        console.log("Sending OTP email to:", user.email);
+        await sendEmail(user.email, otp);
+
+        return {
+          message:
+            "OTP has been sent to your email. Please verify your account.",
+          email: user.email,
+        };
+      } catch (error) {
+        console.error("Registration error:", error);
+        throw new GraphQLError("Failed to register user: " + error.message);
       }
+    },
+    verifyOTP: async (_, { email, otp }) => {
+      try {
+        const user = await User.findOne({ email });
+        if (!user) {
+          throw new GraphQLError("User not found");
+        }
 
-      const user = new User(input);
-      await user.save();
+        if (user.isVerified) {
+          throw new GraphQLError("User already verified");
+        }
 
-      const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
-        expiresIn: "24h",
-      });
+        if (user.otp !== otp || user.otpExpiresAt < new Date()) {
+          throw new GraphQLError("Invalid or expired OTP");
+        }
 
-      return {
-        token,
-        user,
-      };
+        user.isVerified = true;
+        user.otp = null;
+        user.otpExpiresAt = null;
+        user.active = true;
+        await user.save();
+
+        const token = jwt.sign(
+          { userId: user.id, email: user.email, role: user.role },
+          process.env.JWT_SECRET || "Ni0sdfg4325sfwesfer432sdfg_0089@IT",
+          { expiresIn: "24h" }
+        );
+
+        return {
+          message: "Account verified successfully!",
+          token,
+          user: {
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            active: true,
+            isVerified: user.isVerified,
+            isSeller: user.isSeller,
+            lastLogin: user.lastLogin,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt,
+          },
+        };
+      } catch (error) {
+        console.error("OTP verification error:", error);
+        throw new GraphQLError("Failed to verify OTP: " + error.message);
+      }
     },
 
     createUser: async (_, { input }, { user }) => {
@@ -1258,8 +1385,10 @@ export const resolvers = {
         if (existingUser) {
           throw new GraphQLError("User with this email already exists");
         }
+
         const newUser = new User(input);
         const newUserSave = await newUser.save();
+
         return {
           ...successResponse(),
           newUserSave,
@@ -1434,6 +1563,7 @@ export const resolvers = {
 
     // ================================================START CUSTOMER ORDER PRODUCT MUTATION=======================================
     createCustomerOrderProduct: async (_, { input }, { user }) => {
+      requireRole(user, ["User"]);
       try {
         let subTotal = 0;
 
@@ -1499,7 +1629,6 @@ export const resolvers = {
         };
       } catch (error) {
         console.error("createCustomerOrderProduct error:", error);
-
         return errorResponse();
       }
     },
@@ -2180,7 +2309,6 @@ export const resolvers = {
 
     refundSale: async (_, { id }, { user }) => {
       requireRole(user, ["Admin", "Manager", "Seller"]);
-
       const sale = await Sale.findById(id);
       if (!sale) {
         throw new GraphQLError("Sale not found");
@@ -2265,7 +2393,7 @@ export const resolvers = {
             owner,
             shop: shopId ?? null,
           },
-          { new: true } // បញ្ជាក់ថាចង់បាន Document ថ្មីបន្ទាប់ពី Update
+          { new: true }
         );
 
         if (!updatedSupplier) {
