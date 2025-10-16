@@ -10,7 +10,7 @@ import User from "./models/User.js";
     if (!auth) return null;
     const [scheme, token] = auth.split(" ");
     if (scheme?.toLowerCase() === "bearer" && token) return token.trim();
-    // Fallback: allow raw token (optional)
+    
     return auth.trim();
   }
 

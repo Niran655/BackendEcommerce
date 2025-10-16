@@ -2,21 +2,21 @@ import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema({
-  name: { 
-    type: String, 
+  name: {
+    type: String,
     required: [true, "Name is required"],
-    trim: true
+    trim: true,
   },
-  email: { 
-    type: String, 
-    required: [true, "Email is required"], 
+  email: {
+    type: String,
+    required: [true, "Email is required"],
     unique: true,
     lowercase: true,
-    trim: true
+    trim: true,
   },
-  password: { 
-    type: String, 
-    required: [true, "Password is required"] 
+  password: {
+    type: String,
+    required: [true, "Password is required"],
   },
   role: {
     type: String,
@@ -33,41 +33,40 @@ const userSchema = new mongoose.Schema({
     ],
     default: "User",
   },
-  active: { 
-    type: Boolean, 
-    default: true 
+  active: {
+    type: Boolean,
+    default: true,
   },
-  lastLogin: { 
-    type: Date 
+  lastLogin: {
+    type: Date,
   },
-  isVerified: { 
-    type: Boolean, 
-    default: false 
+  isVerified: {
+    type: Boolean,
+    default: false,
   },
-  otp: { 
-    type: String 
+  otp: {
+    type: String,
   },
-  otpExpiresAt: { 
-    type: Date 
+  otpExpiresAt: {
+    type: Date,
   },
   isSeller: {
-    type: Boolean, 
-    default: false
+    type: Boolean,
+    default: false,
   },
-  createdAt: { 
-    type: Date, 
-    default: Date.now 
+  createdAt: {
+    type: Date,
+    default: Date.now,
   },
-  updatedAt: { 
-    type: Date, 
-    default: Date.now 
+  updatedAt: {
+    type: Date,
+    default: Date.now,
   },
 });
 
-
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
-  
+
   try {
     this.password = await bcrypt.hash(this.password, 12);
     next();
@@ -76,17 +75,14 @@ userSchema.pre("save", async function (next) {
   }
 });
 
-
 userSchema.pre("save", function (next) {
   this.updatedAt = Date.now();
   next();
 });
 
-
 userSchema.methods.comparePassword = async function (password) {
   return bcrypt.compare(password, this.password);
 };
-
 
 userSchema.methods.toJSON = function () {
   const user = this.toObject();

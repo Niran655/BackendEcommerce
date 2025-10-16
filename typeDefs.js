@@ -7,8 +7,8 @@ export const typeDefs = `#graphql
       email: String!
       role: Role
       active: Boolean!
-        isVerified: Boolean!  
-         isSeller: Boolean! 
+      isVerified: Boolean!  
+      isSeller: Boolean! 
       lastLogin: Date
       createdAt: Date!
       updatedAt: Date!
@@ -16,15 +16,12 @@ export const typeDefs = `#graphql
     type RegisterResponse {
       message: String!
       email: String!
-
     }
-
     type VerifyResponse {
       message: String!
       token: String
       user: User
     }
-
     type Shop {
       id: ID!
       owner: User!
@@ -40,8 +37,11 @@ export const typeDefs = `#graphql
     }
 
     type ShopStaff {
+      id: ID!
       user: User!
+      shop: Shop!
       role: Role!
+      active:Boolean
       assignedAt: Date!
     }
 
@@ -350,14 +350,11 @@ export const typeDefs = `#graphql
       Staff
       Customer
     }
-
-
     enum PaymentMethod {
       cash
       card
       qr
     }
-
     enum SaleStatus {
       completed
       refunded
@@ -433,6 +430,26 @@ export const typeDefs = `#graphql
     data:[User]
     paginator:PaginatorMeta
   }
+  type ShopByOwnerPaginator{
+    data:[Shop]
+    paginator:PaginatorMeta
+  }
+
+  type ShopStaffPaginator{
+    data: [ShopStaff]
+    paginator: PaginatorMeta
+  }
+
+  type ShopByOwnerPaginator{
+    data: [Shop]
+    paginator: PaginatorMeta
+  }
+
+  type ShopStaffPaginator{
+    data: [ShopStaff]
+    paginator: PaginatorMeta
+  }
+
   type CategoryPaginator{
     data: [Category]
     paginator: PaginatorMeta
@@ -486,7 +503,18 @@ export const typeDefs = `#graphql
       role: Role!
     }
 
-    input UserUpdateInput {
+    input ShopStaffInput {
+      shopId: ID!
+      userId: ID!
+      role: Role!
+      active: Boolean
+    }
+
+    input ShopStaffUpdateInput { 
+      role: Role!
+    }
+
+    input UserUpdateInput{
       name: String
       email: String
       password: String
@@ -725,12 +753,15 @@ export const typeDefs = `#graphql
       user(id: ID!): User
       getAllUserWithPagination(page:Int, limit:Int, pagination:Boolean,keyword:String):UserForAdminPaginator
 
-
       myShops: [Shop!]!
       getShopsByOwnerId(id:ID!):[Shop]!
+
+      getShopsByOwnerIdWithPagination(ownerId:ID!,page:Int, limit:Int, pagination:Boolean,keyword:String):ShopByOwnerPaginator
       getShops: [Shop!]!
       getShopsByTypeId(typeId:ID):[Shop]
       shop(id: ID!): Shop
+
+      getShopStaffWithPagination(shopId: ID!,page:Int, limit:Int, pagination:Boolean,keyword:String): ShopStaffPaginator
       #======================================================================================================================
       #General Products QueryQ
       products(shopId:ID): [Product!]!
@@ -773,7 +804,7 @@ export const typeDefs = `#graphql
       getOrderForShop(shopId:ID):[Order]
       getAllOrder:[Order]
       getOrderComplete(shopId: ID, status: OrderStatus): [Order]
-
+      
       # ==========================================START CUSTMER ORDER QUERY================================
       #============================START SUPPLIER QUERY====================================================
       # Suppliers
@@ -829,8 +860,14 @@ export const typeDefs = `#graphql
       createShop(input: ShopInput!): MutationResponse
       createShopForSeller(input:ShopInput):MutationResponse
       deleteShop(shopId:ID) : MutationResponse
-      assignStaffToShop(input: AssignStaffInput!): MutationResponse!
-      removeStaffFromShop(shopId: ID!, userId: ID!): MutationResponse!
+      # assignStaffToShop(input: AssignStaffInput!): MutationResponse!
+      # removeStaffFromShop(shopId: ID!, userId: ID!): MutationResponse!
+
+      #Staff For Shop
+      assignStaffToShop(input: ShopStaffInput!): MutationResponse!
+      updateStaffRole(shopStaffId: ID!, input: ShopStaffUpdateInput!): MutationResponse!
+      removeStaffFromShop(shopStaffId: ID!): MutationResponse!
+      bulkAssignStaffToShop(staffList: [ShopStaffInput!]!): MutationResponse!
       
       #category
       createCategory(input:CategoryInput) : MutationResponse  

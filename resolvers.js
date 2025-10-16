@@ -8,6 +8,7 @@ import PurchaseOrder from "./models/PurchaseOrder.js";
 import StockMovement from "./models/StockMovement.js";
 import paginateQuery from "./utils/paginateQuery.js";
 import { generateOTP } from "./utils/generateOTP.js";
+import ShopStaff from "./models/ShopStaff.js";
 import Category from "./models/Category.js";
 import Supplier from "./models/Supplier.js";
 import { sendEmail } from "./utils/sendEmail.js";
@@ -209,16 +210,74 @@ export const resolvers = {
         throw new Error(`Failed to fetch shops: ${error.message}`);
       }
     },
+    getShopsByOwnerIdWithPagination: async (
+      _,
+      { page = 1, limit = 10, pagination = true, keyword = "", ownerId },
+      { user }
+    ) => {
+      requireRole(user, ["Seller"]);
+      try {
+        const query = {
+          owner: ownerId,
+          ...(keyword && {
+            $or: [{ name: { $regex: keyword, $options: "i" } }],
+          }),
+        };
+        const paginationQuery = await paginateQuery({
+          model: Shop,
+          query,
+          page,
+          limit,
+          pagination,
+          populate: ["owner"],
+        });
+        return {
+          data: paginationQuery.data,
+          paginator: paginationQuery.paginator,
+        };
+      } catch (error) {
+        console.log("Error", error);
+      }
+    },
+
     getShops: async () => {
-      return await Shop.find();
+      return await Shop.find().populate("type");
     },
     shop: async (_, { id }) => {
       return await Shop.findById(id);
     },
     getShopsByTypeId: async (_, { typeId }) => {
-      return await Shop.find({ type: typeId });
+      return await Shop.find({ type: typeId }).populate("type");
     },
 
+      getShopStaffWithPagination: async (
+        _,
+        { page = 1, limit = 10, pagination = true, keyword = "",shopId },
+        {user}
+      ) => {
+        requireRole(user,["Seller"])
+        const query = {
+          shop: shopId,
+          ...(keyword && {
+            $or: [{ role: { $regex: keyword, $options: "i" } }],
+          }),
+        };
+        
+        const paginationQuery = await paginateQuery({
+          model: ShopStaff,
+          query,
+          page,
+          limit,
+          pagination,
+          populate: [{ path: "user"}],
+          sort: { assignedAt: -1 },
+        });
+
+        return {
+          data: paginationQuery.data,
+          paginator: paginationQuery.paginator,
+        };
+      },
     // =========================================================================================
     // General Product
     products: async (_, { shopId }) => {
@@ -1453,8 +1512,9 @@ export const resolvers = {
         return errorResponse();
       }
     },
+
     createShopForSeller: async (_, { input }, { user }) => {
-      // requireRole(user, ["Admin"]);
+      requireRole(user, ["Admin"]);
       try {
         if (!input.shopName || !input.owner) {
           throw new Error("Missing required fields: shopName or owner");
@@ -1497,6 +1557,70 @@ export const resolvers = {
         );
       }
     },
+
+    assignStaffToShop: async (_, { input }, { user }) => {
+      requireRole(user, ["Seller"]);
+      try {
+        const { shopId, userId, role } = input;
+        const existedStaff = await ShopStaff.findOne({
+          shop: shopId,
+          user: userId,
+        });
+        if (existedStaff) {
+          throw new GraphQLError("Staff already assigned to this shop");
+        }
+
+        const staff = new ShopStaff({
+          user: userId,
+          shop: shopId,
+          role: role,
+          active:true,
+          assignedAt: new Date(),
+        });
+        await staff.save();
+        return {
+          ...successResponse(),
+          staff,
+        };
+      } catch (error) {
+        return errorResponse();
+      }
+    },
+
+    updateStaffRole: async (_, { shopStaffId, input }) => {
+      const { role } = input;
+      const shopStaff = await ShopStaff.findByIdAndUpdate(
+        shopStaffId,
+        { role },
+        { new: true }
+      );
+      if (!shopStaff) {
+        return {
+          isSuccess: false,
+          message: {
+            messageEn: "Staff assignment not found",
+            messageKh: "រកមិនឃើញការចាត់តាំងបុគ្គលិកទេ។",
+          },
+        };
+      }
+      return successResponse();
+    },
+
+    removeStaffFromShop: async (_, { shopStaffId }, context) => {
+      const result = await ShopStaff.findByIdAndDelete(shopStaffId);
+
+      if (!result) {
+        return {
+          isSuccess: false,
+          message: {
+            messageEn: "Staff assignment not found",
+            messageKh: "",
+          },
+        };
+      }
+      return successResponse();
+    },
+
     // ==================================================PRODUCTS=====================================================
     // Admin All Product Can Sew
     createProduct: async (_, { input }, { user }) => {
