@@ -907,13 +907,10 @@ export const resolvers = {
         { $sort: { _id: 1 } },
       ]);
 
-      // Low stock items
       const lowStockItems = await Product.find({ active: true }).then(
         (products) => products.filter((p) => p.stock <= p.minStock)
       );
-
       const stats = todaySales[0] || { total: 0, count: 0 };
-
       return {
         todaySales: stats.total,
         totalTransactions: stats.count,
@@ -1312,37 +1309,53 @@ export const resolvers = {
         user,
       };
     },
-    loginWithGoogle: async (_, { email, name }) => {
-      if (!email) {
-        throw new GraphQLError("Email is required");
-      }
-      let user = await User.findOne({ email });
-      if (!user) {
-        const randomPassword = Math.random().toString(36).slice(-12);
-        user = new User({
-          name: name || email.split("@")[0],
-          email,
-          password: randomPassword,
-          role: "User",
-          active: true,
-          lastLogin: new Date(),
-        });
-        await user.save();
-      } else {
-        user.lastLogin = new Date();
-        await user.save();
-      }
+      loginWithGoogle: async (_, { email, name }) => {
+        try {
+          if (!email) {
+            throw new GraphQLError("Email is required");
+          }
 
-      const token = jwt.sign(
-        { userId: user.id },
-        process.env.JWT_SECRET || "Ni0sdfg4325sfwesfer432sdfg_0089@IT",
-        { expiresIn: "24h" }
-      );
+          let user = await User.findOne({ email });
 
-      console.log("loginWithGoogle response:", { token, user });
+          if (!user) {
+      
+            throw new GraphQLError(
+              "Account not found for this Google email. Please register first with this email."
+            );
+          }
 
-      return { token, user };
-    },
+          // Ensure proper profile data on Google login
+          if (!user.name) {
+            user.name = name || email.split("@")[0];
+          }
+          if (!user.active) user.active = true;
+          if (user.isVerified === false) user.isVerified = true;
+          user.lastLogin = new Date();
+          await user.save();
+
+         const token = jwt.sign(
+          {
+            user: {
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              // បើចង់បន្ថែមផ្សេងទៀតក៏បាន៖ role, phone, etc.
+              role: user.role,
+            },
+          },
+          process.env.JWT_SECRET || "Ni0sdfg4325sfwesfer432sdfg_0089@IT",
+          { expiresIn: "24h" }
+        );
+
+
+          console.log("loginWithGoogle response:", { token, user });
+          return { token, user };
+        } catch (err) {
+          console.error("loginWithGoogle error:", err);
+          if (err instanceof GraphQLError) throw err;
+          throw new GraphQLError("Failed to login with Google");
+        }
+      },
 
     register: async (_, { input }) => {
       try {
@@ -1557,7 +1570,7 @@ export const resolvers = {
         );
       }
     },
-
+    // =====================================================================================================================  
     assignStaffToShop: async (_, { input }, { user }) => {
       requireRole(user, ["Seller"]);
       try {
@@ -1586,7 +1599,6 @@ export const resolvers = {
         return errorResponse();
       }
     },
-
     updateStaffRole: async (_, { shopStaffId, input }) => {
       const { role } = input;
       const shopStaff = await ShopStaff.findByIdAndUpdate(
@@ -1620,7 +1632,7 @@ export const resolvers = {
       }
       return successResponse();
     },
-
+    //=============================================================================================================
     // ==================================================PRODUCTS=====================================================
     // Admin All Product Can Sew
     createProduct: async (_, { input }, { user }) => {

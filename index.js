@@ -12,10 +12,11 @@ await connectDB();
 const server = new ApolloServer({
   typeDefs,
   resolvers,
+  csrfPrevention:false
 });
 
 const { url } = await startStandaloneServer(server, {
-  listen: { port: process.env.PORT || 4000 },
+  listen: { port: process.env.PORT || 4001 },
   context: async ({ req }) => buildContext({ req }),
 });
 

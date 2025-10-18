@@ -13,6 +13,18 @@ export const typeDefs = `#graphql
       createdAt: Date!
       updatedAt: Date!
     }
+    #===============================
+    type InviteStaff{
+      id:ID!
+      email:String
+      shop:Shop
+      role:String
+      token:String
+    }
+
+
+
+
     type RegisterResponse {
       message: String!
       email: String!
@@ -55,7 +67,6 @@ export const typeDefs = `#graphql
       altText:String
       caption:String
     }
-
 
     type AddToSlide {
       id:ID!
@@ -390,6 +401,13 @@ export const typeDefs = `#graphql
         REFUNDED
     }
 
+    enum InviteStatus{
+         Pending
+         Accepted
+         Rejected
+    }
+
+
     type PaginatorMeta {
       slNo: Int!
       prev: Int
@@ -496,6 +514,7 @@ export const typeDefs = `#graphql
       role: String      
       isSeller: Boolean 
     }
+
 
     input AssignStaffInput {
       shopId: ID!  
@@ -863,12 +882,16 @@ export const typeDefs = `#graphql
       # assignStaffToShop(input: AssignStaffInput!): MutationResponse!
       # removeStaffFromShop(shopId: ID!, userId: ID!): MutationResponse!
 
-      #Staff For Shop
+      #======================================================================================================
+      #Staff For Shop                                                                                       =
       assignStaffToShop(input: ShopStaffInput!): MutationResponse!
-      updateStaffRole(shopStaffId: ID!, input: ShopStaffUpdateInput!): MutationResponse!
+      updateStaffRole(shopStaffId: ID!, input: ShopStaffUpdateInput!): MutationResponse!                    #
       removeStaffFromShop(shopStaffId: ID!): MutationResponse!
-      bulkAssignStaffToShop(staffList: [ShopStaffInput!]!): MutationResponse!
+      bulkAssignStaffToShop(staffList: [ShopStaffInput!]!): MutationResponse!                               #
       
+
+      #=====================================================================================================
+
       #category
       createCategory(input:CategoryInput) : MutationResponse  
       updateCategory(id:ID!, input:CategoryInput): MutationResponse
