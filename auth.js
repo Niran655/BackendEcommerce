@@ -22,10 +22,11 @@ import User from "./models/User.js";
       if (!token) return { user: null };
 
       const payload = jwt.verify(token, JWT_SECRET);
-      if (!payload?.userId) return { user: null };
+      const userId = payload?.userId || payload?.user?.id;
+      if (!userId) return { user: null };
 
    
-      const doc = await User.findById(payload.userId).lean();
+      const doc = await User.findById(userId).lean();
       if (!doc) return { user: null };
 
   

@@ -22,9 +22,6 @@ export const typeDefs = `#graphql
       token:String
     }
 
-
-
-
     type RegisterResponse {
       message: String!
       email: String!
@@ -55,6 +52,29 @@ export const typeDefs = `#graphql
       role: Role!
       active:Boolean
       assignedAt: Date!
+    }
+
+    type ShopInvite {
+      id: ID!
+      shop: Shop!
+      inviteBy: User!
+      email: String!
+      token: String!
+      status: String!
+      expiresAt: String!
+      createdAt: String!
+    }
+    
+    type ShopEvent{
+      id:ID!
+      shop:Shop
+      titleKh:String
+      titleEn:String
+      description:String
+      condition:String
+      startDate:Date
+      endDate:Date
+      createdAt:String
     }
 
     type AuthPayload {
@@ -316,11 +336,13 @@ export const typeDefs = `#graphql
     }
 
     type SalesReport {
-      totalSales: Float!
-      totalTransactions: Int!
-      averageOrderValue: Float!
-      salesByCategory: [CategorySale!]!
-      salesByDay: [DailySale!]!
+      totalSales: Float
+      totalTransactions: Int
+      averageOrderValue: Float
+      salesByCategory: [CategorySale!]
+      salesByDay: [DailySale]
+      averageSoldCompareToOtherStaff: Float
+      staffName: String
     }
 
     type CategorySale {
@@ -404,7 +426,7 @@ export const typeDefs = `#graphql
     enum InviteStatus{
          Pending
          Accepted
-         Rejected
+         Expired
     }
 
 
@@ -463,11 +485,6 @@ export const typeDefs = `#graphql
     paginator: PaginatorMeta
   }
 
-  type ShopStaffPaginator{
-    data: [ShopStaff]
-    paginator: PaginatorMeta
-  }
-
   type CategoryPaginator{
     data: [Category]
     paginator: PaginatorMeta
@@ -494,6 +511,15 @@ export const typeDefs = `#graphql
     paginator: PaginatorMeta
   }
 
+  type shopStaffSaleReportPaginator{
+    data: [SalesReport]
+    paginator: PaginatorMeta
+  }
+
+  type ShopEventPaginator{
+    data: [ShopEvent]
+    paginator: PaginatorMeta
+  }
 
   # =================================================INPUT TYPE===========================================================================
 
@@ -516,22 +542,10 @@ export const typeDefs = `#graphql
     }
 
 
-    input AssignStaffInput {
-      shopId: ID!  
-      userId: ID!
-      role: Role!
-    }
 
-    input ShopStaffInput {
-      shopId: ID!
-      userId: ID!
-      role: Role!
-      active: Boolean
-    }
+ 
 
-    input ShopStaffUpdateInput { 
-      role: Role!
-    }
+
 
     input UserUpdateInput{
       name: String
@@ -549,6 +563,21 @@ export const typeDefs = `#graphql
       code:String
       slug:String  
       typeId:ID!
+    }
+    
+    input ShopEventInput{
+      shopId:ID
+      titleKh:String
+      titleEn:String
+      description:String
+      condition:String
+      startDate:Date
+      endDate:Date
+    }
+
+    input ShopStaffRoleInput {
+      role: Role!
+      active:Boolean
     }
 
    # Update ProductInput
@@ -773,14 +802,19 @@ export const typeDefs = `#graphql
       getAllUserWithPagination(page:Int, limit:Int, pagination:Boolean,keyword:String):UserForAdminPaginator
 
       myShops: [Shop!]!
-      getShopsByOwnerId(id:ID!):[Shop]!
-
+      getShopsByOwnerId(id:ID):[Shop]
+      getShopInviteByEmail(email:String!):[ShopInvite]!
       getShopsByOwnerIdWithPagination(ownerId:ID!,page:Int, limit:Int, pagination:Boolean,keyword:String):ShopByOwnerPaginator
       getShops: [Shop!]!
       getShopsByTypeId(typeId:ID):[Shop]
       shop(id: ID!): Shop
 
       getShopStaffWithPagination(shopId: ID!,page:Int, limit:Int, pagination:Boolean,keyword:String): ShopStaffPaginator
+      getShopInvite(shopId: ID!):[ShopInvite]
+
+      #event
+      getShopEventWithPagination(shopId:ID, page:Int, limit:Int, pagination: Boolean, keyword:String):ShopEventPaginator
+      getShopEvent(shopId:ID): [ShopEvent]
       #======================================================================================================================
       #General Products QueryQ
       products(shopId:ID): [Product!]!
@@ -825,7 +859,7 @@ export const typeDefs = `#graphql
       getOrderComplete(shopId: ID, status: OrderStatus): [Order]
       
       # ==========================================START CUSTMER ORDER QUERY================================
-      #============================START SUPPLIER QUERY====================================================
+      #==============================================START SUPPLIER QUERY====================================================
       # Suppliers
       suppliers: [Supplier!]!
       supplier(id: ID!): Supplier
@@ -855,6 +889,8 @@ export const typeDefs = `#graphql
       #Reports 
       salesReport(startDate: Date!, endDate: Date!): SalesReport!
       salesReportForShop(startDate: Date!, endDate: Date!, shopId: ID): SalesReport
+      shopStaffSaleReport(shopId:ID!, startDate: Date!, endDate: Date!): [SalesReport]
+
       #===============================END DASHBOARD AND REPORTS QUERY==========================================
     }
     type Mutation {
@@ -868,7 +904,7 @@ export const typeDefs = `#graphql
       # Users
       createUser(input: UserInput): MutationResponse
       
-      updateUser(id: ID!, input: UserUpdateInput!): User!
+      updateUser(id: ID!, input: UserUpdateInput!): MutationResponse!
       deleteUser(id: ID!): Boolean!
 
 
@@ -879,17 +915,22 @@ export const typeDefs = `#graphql
       createShop(input: ShopInput!): MutationResponse
       createShopForSeller(input:ShopInput):MutationResponse
       deleteShop(shopId:ID) : MutationResponse
-      # assignStaffToShop(input: AssignStaffInput!): MutationResponse!
-      # removeStaffFromShop(shopId: ID!, userId: ID!): MutationResponse!
 
+      #shop event
+      createShopEvent(shopId:ID,input: ShopEventInput):MutationResponse!
+      updateShopEvent(eventId:ID,input: ShopEventInput): MutationResponse!
+      deleteShopEvent(eventId:ID): MutationResponse!
+   
       #======================================================================================================
-      #Staff For Shop                                                                                       =
-      assignStaffToShop(input: ShopStaffInput!): MutationResponse!
-      updateStaffRole(shopStaffId: ID!, input: ShopStaffUpdateInput!): MutationResponse!                    #
-      removeStaffFromShop(shopStaffId: ID!): MutationResponse!
-      bulkAssignStaffToShop(staffList: [ShopStaffInput!]!): MutationResponse!                               #
+      #Staff In Shop                                                                                       =
+
+      inviteStaffToShop(email:String,shopId:String):MutationResponse!
+      acceptShopInvite(token:String!): AuthPayload!
       
 
+      updateShopStaff(shopStaffId:ID,shopId:ID, input: ShopStaffRoleInput!): MutationResponse!
+      updateShopStaffRole(shopStaffId:ID!,shopId:ID!, input: ShopStaffRoleInput!): MutationResponse!
+      deleteShopStaff(shopId: ID!, shopStaffId: ID!): MutationResponse!
       #=====================================================================================================
 
       #category
@@ -920,21 +961,17 @@ export const typeDefs = `#graphql
       updateProductForShop(productId:ID!,input:ProductForShopInput):MutationResponse!
       deleteProductForShop(productId:ID!):MutationResponse
      
-      # updateProductForOwner(id:ID!,input:ProductInput): MutationResponse!
-  
-      #====================================================================================================#
-
       #=========================================START CUSTOMER ORDER PRODUCT==================================
       createCustomerOrderProduct(input: OrderInput): MutationResponse!
       updateOrderStatus(orderId:ID,status:OrderStatus): MutationResponse 
       #==========================================END CUSTOMER ORDER PRODUCT==================================
 
-      #===========================================START SALES MUTATION=======================
+
       # Sales
       createSale(input: SaleInput!): Sale!
       refundSale(id: ID!): Sale!
       
-      #===========================================END SALES MUTATIOIN==========================
+  
       # Suppliers
       createSupplier(input: SupplierInput!): Supplier!
       createSupplierForShop(input:SupplierInput,shopId:ID): MutationResponse 

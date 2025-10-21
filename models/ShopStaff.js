@@ -13,7 +13,7 @@ const shopStaffSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['Admin', 'Manager', 'Cashier', 'StockKeeper', 'Staff'],
+    enum: ['Admin', 'Manager', 'Cashier', 'StockKeeper', 'Staff', 'Seller'],
     required: true
   },
   active:{type:Boolean,default:true},

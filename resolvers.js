@@ -19,6 +19,9 @@ import Order from "./models/Order.js";
 import Sale from "./models/Sale.js";
 import Shop from "./models/Shop.js";
 import User from "./models/User.js";
+import { sendInvite } from "./utils/sendInvite.js";
+import ShopInvite from "./models/ShopInvite.js";
+import ShopEvent from "./models/ShopEvent.js";
 // Date scalar
 const dateScalar = new GraphQLScalarType({
   name: "Date",
@@ -180,29 +183,33 @@ export const resolvers = {
 
     myShops: async (_, __, { user }) => {
       requireAuth(user);
-      if (user.role === "Seller") {
-        return await Shop.find({ owner: user._id }).populate("owner");
-      } else {
-        return [];
-      }
+      // Return shops either owned by the user or where the user is on staff
+      const shops = await Shop.find({
+        $or: [{ owner: user._id }, { staff: user._id }],
+      })
+        .populate("owner")
+        .populate("type");
+      return shops;
     },
 
     getShopsByOwnerId: async (_, { id }, { user }) => {
-      requireRole(user, ["Seller", "Admin"]);
+      requireRole(user, ["Seller", "Cashier"]);
       try {
-        let ownerId = user.id;
+        let filter;
         if (user.role === "Admin" && id) {
-          ownerId = id;
+          filter = { owner: id };
         } else if (user.role === "Seller") {
           if (id && String(id) !== String(user.id)) {
             throw new GraphQLError(
               "You do not have permission to view shops for this owner"
             );
           }
-          ownerId = user.id;
+          filter = { $or: [{ owner: user._id }, { staff: user._id }] };
+        } else {
+          filter = { staff: user._id };
         }
 
-        const shops = await Shop.find({ owner: ownerId })
+        const shops = await Shop.find(filter)
           .populate("owner")
           .populate("type");
         return shops || [];
@@ -210,19 +217,41 @@ export const resolvers = {
         throw new Error(`Failed to fetch shops: ${error.message}`);
       }
     },
+
+    getShopInviteByEmail: async (_, { email }, { user }) => {
+      // requireRole(user, ["Admin", "Seller"]);
+      try {
+        const invites = await ShopInvite.find({ email: email })
+          .populate("shop")
+          .populate("inviteBy");
+        return invites || [];
+      } catch (error) {
+        throw new Error(`Failed to fetch shop invites: ${error.message}`);
+      }
+    },
     getShopsByOwnerIdWithPagination: async (
       _,
       { page = 1, limit = 10, pagination = true, keyword = "", ownerId },
       { user }
     ) => {
-      requireRole(user, ["Seller"]);
+      requireAuth(user);
       try {
+        let baseFilter;
+        if (user.role === "Admin" && ownerId) {
+          baseFilter = { owner: ownerId };
+        } else if (user.role === "Seller") {
+          baseFilter = { $or: [{ owner: user._id }, { staff: user._id }] };
+        } else {
+          baseFilter = { staff: user._id };
+        }
+
         const query = {
-          owner: ownerId,
+          ...baseFilter,
           ...(keyword && {
-            $or: [{ name: { $regex: keyword, $options: "i" } }],
+            $or: [{ shopName: { $regex: keyword, $options: "i" } }],
           }),
         };
+
         const paginationQuery = await paginateQuery({
           model: Shop,
           query,
@@ -230,6 +259,7 @@ export const resolvers = {
           limit,
           pagination,
           populate: ["owner"],
+          sort: { createdAt: -1 },
         });
         return {
           data: paginationQuery.data,
@@ -250,34 +280,71 @@ export const resolvers = {
       return await Shop.find({ type: typeId }).populate("type");
     },
 
-      getShopStaffWithPagination: async (
-        _,
-        { page = 1, limit = 10, pagination = true, keyword = "",shopId },
-        {user}
-      ) => {
-        requireRole(user,["Seller"])
-        const query = {
-          shop: shopId,
-          ...(keyword && {
-            $or: [{ role: { $regex: keyword, $options: "i" } }],
-          }),
-        };
-        
-        const paginationQuery = await paginateQuery({
-          model: ShopStaff,
-          query,
-          page,
-          limit,
-          pagination,
-          populate: [{ path: "user"}],
-          sort: { assignedAt: -1 },
-        });
+    getShopStaffWithPagination: async (
+      _,
+      { page = 1, limit = 10, pagination = true, keyword = "", shopId },
+      { user }
+    ) => {
+      requireRole(user, ["Seller"]);
+      const query = {
+        shop: shopId,
+        ...(keyword && {
+          $or: [{ role: { $regex: keyword, $options: "i" } }],
+        }),
+      };
+      const paginationQuery = await paginateQuery({
+        model: ShopStaff,
+        query,
+        page,
+        limit,
+        pagination,
+        populate: [{ path: "user" }],
+        sort: { assignedAt: -1 },
+      });
 
-        return {
-          data: paginationQuery.data,
-          paginator: paginationQuery.paginator,
-        };
-      },
+      return {
+        data: paginationQuery.data,
+        paginator: paginationQuery.paginator,
+      };
+    },
+
+    getShopEventWithPagination: async (
+      _,
+      { shopId, page = 1, limit = 10, pagination = true, keyword = "" },
+      { user }
+    ) => {
+      requireRole(user, ["Seller", "Cashier"]);
+      const query = {
+        shop: shopId,
+        ...(keyword && {
+          $or: [
+            { titleEn: { $regex: keyword, $options: "i" } },
+            { titleKh: { $regex: keyword, $options: "i" } },
+            { description: { $regex: keyword, $options: "i" } },
+          ],
+        }),
+      };
+
+      const paginationQuery = await paginateQuery({
+        model: ShopEvent,
+        query,
+        page,
+        limit,
+        pagination,
+        populate: ["shop"],
+        sort: { assignedAt: -1 },
+      });
+      return {
+        data: paginationQuery.data,
+        paginator: paginationQuery.paginator,
+      };
+    },
+
+    getShopEvent:async(_,{shopId})=>{
+      //get all event in shop
+      const events = await ShopEvent.find({ shop: shopId });
+      return events || [];
+    },
     // =========================================================================================
     // General Product
     products: async (_, { shopId }) => {
@@ -378,7 +445,7 @@ export const resolvers = {
       };
     },
     getProductByShopCategoryId: async (_, { shopCategoryId }, { user }) => {
-      requireRole(user, ["Seller"]);
+      requireRole(user, ["Seller", "Cashier"]);
       try {
         const products = await Product.find({
           active: true,
@@ -1276,6 +1343,66 @@ export const resolvers = {
         salesByDay,
       };
     },
+
+    shopStaffSaleReport: async (
+      _,
+      { shopId, startDate, endDate },
+      { user }
+    ) => {
+      const allSales = await Sale.find({
+        createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) },
+        status: "completed",
+        shop: shopId || null,
+      }).populate("items.product cashier");
+
+      const staffSalesMap = new Map();
+
+      allSales.forEach((sale) => {
+        const cashierId = sale.cashier._id.toString();
+        if (!staffSalesMap.has(cashierId)) {
+          staffSalesMap.set(cashierId, {
+            staffName: sale.cashier.name,
+            totalSales: 0,
+            totalTransactions: 0,
+          });
+        }
+        const staffData = staffSalesMap.get(cashierId);
+        staffData.totalSales += sale.total;
+        staffData.totalTransactions += 1;
+      });
+
+      const staffSalesArray = Array.from(staffSalesMap.values());
+
+      // Calculate total sales of all staff
+      const totalSalesAllStaff = staffSalesArray.reduce(
+        (sum, s) => sum + s.totalSales,
+        0
+      );
+
+      const reports = staffSalesArray.map((staff) => {
+        const averageOrderValue =
+          staff.totalTransactions > 0
+            ? staff.totalSales / staff.totalTransactions
+            : 0;
+
+        const averageSoldCompareToOtherStaff =
+          totalSalesAllStaff > 0
+            ? (staff.totalSales / totalSalesAllStaff) * 100
+            : 0;
+
+        return {
+          staffName: staff.staffName,
+          totalSales: staff.totalSales,
+          totalTransactions: staff.totalTransactions,
+          averageOrderValue,
+          averageSoldCompareToOtherStaff: Number(
+            averageSoldCompareToOtherStaff.toFixed(2)
+          ), // format to 2 decimals
+        };
+      });
+
+      return reports;
+    },
   },
 
   // ===============================================END REPORTS QUERY============================================================
@@ -1309,37 +1436,33 @@ export const resolvers = {
         user,
       };
     },
-      loginWithGoogle: async (_, { email, name }) => {
-        try {
-          if (!email) {
-            throw new GraphQLError("Email is required");
-          }
+    loginWithGoogle: async (_, { email, name }) => {
+      try {
+        if (!email) {
+          throw new GraphQLError("Email is required");
+        }
 
-          let user = await User.findOne({ email });
-
-          if (!user) {
-      
-            throw new GraphQLError(
-              "Account not found for this Google email. Please register first with this email."
-            );
-          }
-
-          // Ensure proper profile data on Google login
-          if (!user.name) {
-            user.name = name || email.split("@")[0];
-          }
-          if (!user.active) user.active = true;
-          if (user.isVerified === false) user.isVerified = true;
-          user.lastLogin = new Date();
-          await user.save();
-
-         const token = jwt.sign(
+        let user = await User.findOne({ email });
+        if (!user) {
+          throw new GraphQLError(
+            "Account not found for this Google email. Please register first with this email."
+          );
+        }
+        // Ensure proper profile data on Google login
+        if (!user.name) {
+          user.name = name || email.split("@")[0];
+        }
+        if (!user.active) user.active = true;
+        if (user.isVerified === false) user.isVerified = true;
+        user.lastLogin = new Date();
+        await user.save();
+        const token = jwt.sign(
           {
+            userId: user.id,
             user: {
               id: user.id,
               name: user.name,
               email: user.email,
-              // បើចង់បន្ថែមផ្សេងទៀតក៏បាន៖ role, phone, etc.
               role: user.role,
             },
           },
@@ -1347,15 +1470,14 @@ export const resolvers = {
           { expiresIn: "24h" }
         );
 
-
-          console.log("loginWithGoogle response:", { token, user });
-          return { token, user };
-        } catch (err) {
-          console.error("loginWithGoogle error:", err);
-          if (err instanceof GraphQLError) throw err;
-          throw new GraphQLError("Failed to login with Google");
-        }
-      },
+        console.log("loginWithGoogle response:", { token, user });
+        return { token, user };
+      } catch (err) {
+        console.error("loginWithGoogle error:", err);
+        if (err instanceof GraphQLError) throw err;
+        throw new GraphQLError("Failed to login with Google");
+      }
+    },
 
     register: async (_, { input }) => {
       try {
@@ -1472,21 +1594,21 @@ export const resolvers = {
 
     updateUser: async (_, { id, input }, { user }) => {
       requireRole(user, ["Admin", "Manager"]);
-      if (input.email) {
-        const existingUser = await User.findOne({
-          email: input.email,
-          _id: { $ne: id },
+      try {
+        const updatedUser = await User.findByIdAndUpdate(id, input, {
+          new: true,
         });
-        if (existingUser) {
-          throw new GraphQLError("User with this email already exists");
+        if (!updatedUser) {
+          throw new GraphQLError("User not found");
         }
+        return {
+          ...successResponse(),
+          updatedUser,
+        };
+      } catch (error) {
+        console.error("Update user error:", error);
+        return errorResponse();
       }
-
-      return await User.findByIdAndUpdate(
-        id,
-        { ...input, updatedAt: new Date() },
-        { new: true }
-      );
     },
 
     deleteUser: async (_, { id }, { user }) => {
@@ -1570,69 +1692,305 @@ export const resolvers = {
         );
       }
     },
-    // =====================================================================================================================  
-    assignStaffToShop: async (_, { input }, { user }) => {
+
+    createShopEvent: async (_, { shopId, input }, { user }) => {
       requireRole(user, ["Seller"]);
       try {
-        const { shopId, userId, role } = input;
-        const existedStaff = await ShopStaff.findOne({
+        const newEvent = new ShopEvent({
           shop: shopId,
-          user: userId,
-        });
-        if (existedStaff) {
-          throw new GraphQLError("Staff already assigned to this shop");
-        }
-
-        const staff = new ShopStaff({
-          user: userId,
+          ...input,
           shop: shopId,
-          role: role,
-          active:true,
-          assignedAt: new Date(),
         });
-        await staff.save();
+        const eventSave = await newEvent.save();
         return {
           ...successResponse(),
-          staff,
+          eventSave,
+        };
+      } catch (error) {
+        console.log("error", error);
+        return errorResponse();
+      }
+    },
+    updateShopEvent: async (_, { eventId, input }, { user }) => {
+      requireRole(user, ["Seller"]);
+      try {
+        const shopEvent = await ShopEvent.findById(eventId);
+        if (!shopEvent) {
+          throw new Error("Shop Event not found");
+        }
+
+        const updatedEvent = await ShopEvent.findByIdAndUpdate(
+          eventId,
+          { $set: input },
+          { new: true }
+        );
+
+        return {
+          ...successResponse(),
+          event: updatedEvent,
+        };
+      } catch (error) {
+        console.log("Error updating event:", error);
+        return errorResponse();
+      }
+    },
+
+    deleteShopEvent: async (_, { eventId }, { user }) => {
+      requireRole(user, ["Seller"]);
+      console.log(eventId);
+      try {
+        const shopEvent = await ShopEvent.findById(eventId);
+        if (!shopEvent) {
+          throw new Error("Not found");
+        }
+
+        const eventDelete = await ShopEvent.findByIdAndDelete(eventId);
+
+        return {
+          ...successResponse(),
+          eventDelete,
+        };
+      } catch (error) {
+        console.log("error", error);
+        return errorResponse();
+      }
+    },
+
+    inviteStaffToShop: async (_, { shopId, email }, { user }) => {
+      try {
+        if (!user || !user.id) {
+          throw new Error("Unauthorized: No user context");
+        }
+
+        const shop = await Shop.findById(shopId);
+        if (!shop || shop.owner.toString() !== user.id) {
+          throw new Error("Unauthorized: You do not own this shop");
+        }
+
+        const token = jwt.sign(
+          { shopId, email, type: "shop_invite" },
+          process.env.JWT_SECRET || "Ni0sdfg4325sfwesfer432sdfg_0089@IT",
+          { expiresIn: "7d" }
+        );
+
+        const shopInvite = new ShopInvite({
+          shop: shopId,
+          inviteBy: user.id,
+          email,
+          token,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        });
+
+        await shopInvite.save();
+
+        const inviteLink = `http://localhost:3000/accept-invite?token=${token}`;
+        await sendInvite({
+          to: email,
+          subject: "ការអញ្ជើញចូលរួមហាង",
+          html: `
+        <h2>អ្នកត្រូវបានអញ្ជើញចូលរួមហាង</h2>
+        <p>អ្នកត្រូវបានអញ្ជើញចូលរួមជាបុគ្គលិកក្នុងហាង: ${shop.name}</p>
+        <a href="${inviteLink}">ចុចទីនេះដើម្បីទទួលយកការអញ្ជើញ</a>
+        <p>Linkនេះនឹងផុតកំណត់ក្នុងរយៈពេល ៧ថ្ងៃ</p>
+      `,
+        });
+
+        return {
+          ...successResponse(),
+          shopInvite,
+        };
+      } catch (error) {
+        errorResponse();
+        throw new GraphQLError(error.message);
+      }
+    },
+
+    acceptShopInvite: async (_, { token }, { res }) => {
+      try {
+        const decoded = jwt.verify(
+          token,
+          process.env.JWT_SECRET || "Ni0sdfg4325sfwesfer432sdfg_0089@IT"
+        );
+        if (decoded.type !== "shop_invite") {
+          throw new Error("Invalid invitation token");
+        }
+        const invite = await ShopInvite.findOne({
+          token,
+          status: "Pending",
+          expiresAt: { $gt: new Date() },
+        }).populate("shop");
+
+        if (!invite) {
+          throw new Error("Invitation not found or expired");
+        }
+
+        if (invite.email !== decoded.email) {
+          throw new Error("Email mismatch");
+        }
+
+        let user = await User.findOne({ email: invite.email });
+        let isNewUser = false;
+
+        if (!user) {
+          const password = Math.random().toString(36).slice(-8);
+          user = new User({
+            email: invite.email,
+            password: password,
+            role: "Cashier",
+            isVerified: true,
+            active: true,
+          });
+          await user.save();
+          isNewUser = true;
+          console.log("New user password:", password);
+        } else {
+          if (user.role !== "Cashier") {
+            user.role = "Cashier";
+          }
+          if (!user.active) user.active = true;
+          if (!user.isVerified) user.isVerified = true;
+          await user.save();
+        }
+
+        await Shop.findByIdAndUpdate(invite.shop._id, {
+          $addToSet: { staff: user._id },
+        });
+
+        await ShopStaff.updateOne(
+          { shop: invite.shop._id, user: user._id },
+          {
+            $setOnInsert: {
+              assignedAt: new Date(),
+            },
+            $set: {
+              role: "Cashier",
+              active: true,
+            },
+          },
+          { upsert: true }
+        );
+
+        // update invitation status
+        invite.status = "Accepted";
+        await invite.save();
+
+        const authToken = jwt.sign(
+          {
+            userId: user.id,
+            user: {
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              role: user.role,
+            },
+          },
+          process.env.JWT_SECRET || "Ni0sdfg4325sfwesfer432sdfg_0089@IT",
+          { expiresIn: "30d" }
+        );
+
+        return {
+          token: authToken,
+          user,
+        };
+      } catch (error) {
+        throw new Error(error.message);
+      }
+    },
+
+    updateShopStaffRole: async (_, { shopStaffId, role }, { user }) => {
+      requireRole(user, ["Seller"]);
+      try {
+        const shopStaff = await ShopStaff.findById(shopStaffId).populate(
+          "shop"
+        );
+        if (!shopStaff) {
+          throw new Error("Shop staff not found");
+        }
+
+        if (shopStaff.shop.owner.toString() !== user.id) {
+          throw new Error("Unauthorized");
+        }
+
+        shopStaff.role = role;
+
+        shopStaff.updatedAt = new Date();
+        await shopStaff.save();
+
+        return {
+          ...successResponse(),
+          shopStaff,
         };
       } catch (error) {
         return errorResponse();
       }
     },
-    updateStaffRole: async (_, { shopStaffId, input }) => {
-      const { role } = input;
-      const shopStaff = await ShopStaff.findByIdAndUpdate(
-        shopStaffId,
-        { role },
-        { new: true }
-      );
-      if (!shopStaff) {
+
+    updateShopStaff: async (_, { shopStaffId, shopId, input }, { user }) => {
+      requireRole(user, ["Seller"]);
+      try {
+        const shop = await Shop.findById(shopId);
+        if (!shop || shop.owner.toString() !== user.id) {
+          throw new Error("Unauthorized");
+        }
+
+        const updatedStaff = await ShopStaff.findByIdAndUpdate(
+          shopStaffId,
+          { ...input, updatedAt: new Date() },
+          { new: true }
+        );
+
+        if (!updatedStaff) {
+          throw new Error("Shop staff not found");
+        }
+
         return {
-          isSuccess: false,
-          message: {
-            messageEn: "Staff assignment not found",
-            messageKh: "រកមិនឃើញការចាត់តាំងបុគ្គលិកទេ។",
-          },
+          ...successResponse(),
+          updatedStaff,
         };
+      } catch (error) {
+        return errorResponse();
       }
-      return successResponse();
+    },
+    deleteShopStaff: async (_, { shopStaffId }, { user }) => {
+      requireRole(user, ["Seller"]);
+
+      try {
+        const shopStaff = await ShopStaff.findById(shopStaffId).populate(
+          "shop user"
+        );
+        if (!shopStaff) throw new Error("Shop staff not found");
+
+        if (shopStaff.shop.owner.toString() !== user.id) {
+          throw new Error("Unauthorized");
+        }
+
+        await ShopStaff.findByIdAndDelete(shopStaffId);
+
+        await ShopInvite.findOneAndDelete({
+          shop: shopStaff.shop._id,
+          email: shopStaff.user.email,
+        });
+
+        const stillHasShops = await ShopStaff.exists({
+          user: shopStaff.user._id,
+        });
+        if (!stillHasShops) {
+          const staffUser = await User.findById(shopStaff.user._id);
+          if (staffUser) {
+            staffUser.role = "User";
+            await staffUser.save();
+          }
+        }
+
+        return successResponse("Staff removed from shop successfully");
+      } catch (error) {
+        console.error(error);
+        return errorResponse(error.message);
+      }
     },
 
-    removeStaffFromShop: async (_, { shopStaffId }, context) => {
-      const result = await ShopStaff.findByIdAndDelete(shopStaffId);
+    // =====================================================================================================================
 
-      if (!result) {
-        return {
-          isSuccess: false,
-          message: {
-            messageEn: "Staff assignment not found",
-            messageKh: "",
-          },
-        };
-      }
-      return successResponse();
-    },
-    //=============================================================================================================
     // ==================================================PRODUCTS=====================================================
     // Admin All Product Can Sew
     createProduct: async (_, { input }, { user }) => {
@@ -1699,7 +2057,7 @@ export const resolvers = {
 
     // ================================================START CUSTOMER ORDER PRODUCT MUTATION=======================================
     createCustomerOrderProduct: async (_, { input }, { user }) => {
-      requireRole(user, ["User"]);
+      requireAuth(user);
       try {
         let subTotal = 0;
 

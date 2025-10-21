@@ -9,6 +9,7 @@ const ShopSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    staff:[{type: mongoose.Schema.Types.ObjectId, ref:"User"}],
     type: { type: mongoose.Schema.Types.ObjectId, ref: "Category",},
     slug: { type: String, require: true },
     image: { type: String, require: true },
