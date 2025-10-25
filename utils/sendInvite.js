@@ -4,8 +4,8 @@ export const sendInvite = async ({ to, subject, html }) => {
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
-      user: "niron.camdoc@gmail.com", 
-      pass: "czgl zxta muff qyoo", 
+      user: process.env.NEXT_PUBLIC_EMAIL_USERNAME, 
+      pass: process.env.NEXT_PUBLIC_EMAIL_PASSWORD, 
     },
   });
   return transporter.sendMail({

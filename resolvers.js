@@ -193,7 +193,7 @@ export const resolvers = {
     },
 
     getShopsByOwnerId: async (_, { id }, { user }) => {
-      requireRole(user, ["Seller", "Cashier"]);
+      requireRole(user, ["Admin", "Seller", "Cashier"]);
       try {
         let filter;
         if (user.role === "Admin" && id) {
@@ -340,7 +340,7 @@ export const resolvers = {
       };
     },
 
-    getShopEvent:async(_,{shopId})=>{
+    getShopEvent: async (_, { shopId }) => {
       //get all event in shop
       const events = await ShopEvent.find({ shop: shopId });
       return events || [];
@@ -402,7 +402,7 @@ export const resolvers = {
       { page = 1, limit = 10, pagination = true, keyword = "", shopId },
       { user }
     ) => {
-      requireRole(user, ["Seller"]);
+      requireRole(user, ["Seller", "Cashier"]);
 
       if (user.role === "Seller") {
         const shop = await Shop.findOne({ _id: shopId, owner: user._id });
@@ -500,7 +500,7 @@ export const resolvers = {
           shop: shopId,
           active: true,
         }).populate("parent");
-        return [...globalCategories, ...shopCategories];
+        return shopCategories
       } catch (error) {
         return errorResponse();
       }
@@ -519,22 +519,16 @@ export const resolvers = {
             $or: [{ name: { $regex: keyword, $options: "i" } }],
           }),
         };
-        const globalCategories = await Category.find({
-          owner: null,
-          shop: shopId,
-          active: true,
-        });
         const paginationQuery = await paginateQuery({
           model: Category,
           query,
           page,
           limit,
           pagination,
-          populate: ["parent"],
+          populate: [{ path: "parent", select: "name _id" }],
         });
-
         return {
-          data: [...globalCategories, ...paginationQuery.data],
+          data: paginationQuery.data,
           paginator: paginationQuery.paginator,
         };
       } catch (error) {
@@ -575,6 +569,7 @@ export const resolvers = {
       requireRole(user, ["Admin"]);
       const query = {
         active: true,
+        shop:null,
         ...(keyword && {
           $or: [{ name: { $regex: keyword, $options: "i" } }],
         }),
@@ -657,7 +652,8 @@ export const resolvers = {
         throw new Error("មិនអាចទាញយក Order បានទេ");
       }
     },
-    getOrderForShop: async (_, { shopId }) => {
+    getOrderForShop: async (_, { shopId }, { user }) => {
+      requireRole(user, ["Seller", "Cashier"]);
       try {
         const orders = await Order.find({
           shop: shopId,
@@ -667,6 +663,21 @@ export const resolvers = {
       } catch (error) {
         console.error("កំហុសក្នុងការទាញយក order:", error);
         throw new Error("មិនអាចយក order បានទេ");
+      }
+    },
+    getOrderWithEmailForCustomer: async (_, { email }, { user }) => {
+      requireAuth(user, ["User"]);
+      try {
+        const orders = await Order.find({
+          "customer.email": email,
+          // status:"PENDING"
+        })
+          .populate("items.product")
+          .populate("shop");
+        return orders;
+      } catch (error) {
+        console.error("កំហុសក្នុងការទាញយក order សម្រាប់អតិថិជន:", error);
+        throw new Error("មិនអាចយក order សម្រាប់អតិថិជនបានទេ");
       }
     },
     getOrderComplete: async (_, { shopId, status }) => {
@@ -680,6 +691,7 @@ export const resolvers = {
         throw new Error("មិនអាចយក order បានទេ");
       }
     },
+
     // ===============================END ORDER QUERY=================================================
     //======================================START SUPPLIER QUERY=====================================
     suppliers: async (_, __, { user }) => {
@@ -817,7 +829,7 @@ export const resolvers = {
     },
 
     getStockMovementsByShop: async (_, { productId, shopId }, { user }) => {
-      requireRole(user, ["Seller"]);
+      requireRole(user, ["Seller", "Cashier"]);
 
       const shop = await Shop.findById(shopId);
       if (!shop || !shop.owner.equals(user._id)) {
@@ -851,13 +863,13 @@ export const resolvers = {
       },
       { user }
     ) => {
-      requireRole(user, ["Seller"]);
+      requireRole(user, ["Manager", "Seller", "Cashier"]);
       try {
         const filter = {};
         if (productId) filter.product = productId;
         if (shopId) filter.shop = shopId;
         const shop = await Shop.findById(shopId);
-        if (!shop || !shop.owner.equals(user.id)) {
+        if (!shop) {
           throw new Error("អ្នកមិនមានសិទ្ធិមើលស្តុកហាងនេះទេ។");
         }
         const query = {
@@ -879,7 +891,7 @@ export const resolvers = {
           populate: [
             { path: "product", select: " name price image" },
             { path: "user", select: " name email" },
-            { path: "shop", select: "name location" },
+            { path: "shop", select: " name location" },
           ],
         });
         return {
@@ -1221,11 +1233,11 @@ export const resolvers = {
 
     // =============================================START REPORT QUERY==========================================
     salesReport: async (_, { startDate, endDate }, { user }) => {
-      requireRole(user, ["Admin", "Manager", "Seller"]);
+      // requireRole(user, ["Admin", "Manager", "Seller"]);
       const sales = await Sale.find({
         createdAt: { $gte: startDate, $lte: endDate },
         status: "completed",
-      }).populate("items.product");
+      }).populate("items.product").populate("shop");
 
       const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
       const totalTransactions = sales.length;
@@ -1245,6 +1257,20 @@ export const resolvers = {
         });
       });
 
+      const shopMap = new Map();
+      sales.forEach((sale) => {
+        const shopId = sale.shop?._id?.toString() || "Unknown";
+        const shop = sale.shop || "Unknown";
+
+        if (!shopMap.has(shopId)) {
+          shopMap.set(shopId, { shop, totalSale: 0, itemsSold: 0 });
+        }
+
+        const shopData = shopMap.get(shopId);
+        shopData.totalSale += sale.total;
+        shopData.itemsSold += sale.items.reduce((sum, item) => sum + item.quantity, 0);
+      });
+
       const salesByCategory = Array.from(categoryMap.entries()).map(
         ([category, data]) => ({
           category,
@@ -1253,6 +1279,13 @@ export const resolvers = {
         })
       );
 
+      const shopPerformance = Array.from(shopMap.entries()).map(
+        ([shopId, data]) => ({
+          shop: [data.shop], 
+          totalSale: data.totalSale,  
+          itemsSold: data.itemsSold
+        })
+      );
       const dayMap = new Map();
       sales.forEach((sale) => {
         const day = sale.createdAt.toISOString().split("T")[0];
@@ -1272,18 +1305,19 @@ export const resolvers = {
         }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
+
       return {
         totalSales,
         totalTransactions,
         averageOrderValue,
         salesByCategory,
         salesByDay,
+        shopPerformance
       };
     },
 
     salesReportForShop: async (_, { startDate, endDate, shopId }, { user }) => {
-      requireRole(user, ["Admin", "Manager", "Seller"]);
-
+      requireRole(user, ["Admin", "Manager", "Seller", "Cashier"]);
       const sales = await Sale.find({
         createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) },
         status: "completed",
@@ -1335,12 +1369,33 @@ export const resolvers = {
         }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
+      const productMap = new Map();
+      sales.forEach((sale) => {
+        sale.items.forEach((item) => {
+          const productId = item.product?._id?.toString() || "Unknown";
+          if (!productMap.has(productId)) {
+            productMap.set(productId, {
+              productId,
+              productName: item.product?.name || "Unknown",
+              retailPrice: item.product?.price,
+              unitPrice: item.price || 0,
+              totalQuantity: 0,
+              totalAmount: 0,
+            });
+          }
+          const prod = productMap.get(productId);
+          prod.totalQuantity += item.quantity;
+          prod.totalAmount += item.total;
+        });
+      });
+      const salesByProduct = Array.from(productMap.values());
       return {
         totalSales,
         totalTransactions,
         averageOrderValue,
         salesByCategory,
         salesByDay,
+        salesByProduct,
       };
     },
 
@@ -1373,7 +1428,6 @@ export const resolvers = {
 
       const staffSalesArray = Array.from(staffSalesMap.values());
 
-      // Calculate total sales of all staff
       const totalSalesAllStaff = staffSalesArray.reduce(
         (sum, s) => sum + s.totalSales,
         0
@@ -1397,7 +1451,7 @@ export const resolvers = {
           averageOrderValue,
           averageSoldCompareToOtherStaff: Number(
             averageSoldCompareToOtherStaff.toFixed(2)
-          ), // format to 2 decimals
+          ),
         };
       });
 
@@ -1410,6 +1464,7 @@ export const resolvers = {
   // ====================================================CATECGORY===================================================================
   Mutation: {
     login: async (_, { email, password }) => {
+      console.log("process.env.NEXT_PUBLIC_JWT_SECRET",process.env.NEXT_PUBLIC_JWT_SECRET)
       console.log({ email, password });
       const user = await User.findOne({ email, active: true });
       console.log({ user });
@@ -1426,7 +1481,7 @@ export const resolvers = {
 
       const token = jwt.sign(
         { userId: user.id },
-        process.env.JWT_SECRET || "Ni0sdfg4325sfwesfer432sdfg_0089@IT",
+        process.env.NEXT_PUBLIC_JWT_SECRET,
         {
           expiresIn: "24h",
         }
@@ -1448,7 +1503,7 @@ export const resolvers = {
             "Account not found for this Google email. Please register first with this email."
           );
         }
-        // Ensure proper profile data on Google login
+
         if (!user.name) {
           user.name = name || email.split("@")[0];
         }
@@ -1466,7 +1521,7 @@ export const resolvers = {
               role: user.role,
             },
           },
-          process.env.JWT_SECRET || "Ni0sdfg4325sfwesfer432sdfg_0089@IT",
+          process.env.NEXT_PUBLIC_JWT_SECRET,
           { expiresIn: "24h" }
         );
 
@@ -1546,7 +1601,7 @@ export const resolvers = {
 
         const token = jwt.sign(
           { userId: user.id, email: user.email, role: user.role },
-          process.env.JWT_SECRET || "Ni0sdfg4325sfwesfer432sdfg_0089@IT",
+          process.env.NEXT_PUBLIC_JWT_SECRET,
           { expiresIn: "24h" }
         );
 
@@ -1769,7 +1824,7 @@ export const resolvers = {
 
         const token = jwt.sign(
           { shopId, email, type: "shop_invite" },
-          process.env.JWT_SECRET || "Ni0sdfg4325sfwesfer432sdfg_0089@IT",
+          process.env.NEXT_PUBLIC_JWT_SECRET,
           { expiresIn: "7d" }
         );
 
@@ -1809,7 +1864,7 @@ export const resolvers = {
       try {
         const decoded = jwt.verify(
           token,
-          process.env.JWT_SECRET || "Ni0sdfg4325sfwesfer432sdfg_0089@IT"
+          process.env.NEXT_PUBLIC_JWT_SECRET
         );
         if (decoded.type !== "shop_invite") {
           throw new Error("Invalid invitation token");
@@ -1884,7 +1939,7 @@ export const resolvers = {
               role: user.role,
             },
           },
-          process.env.JWT_SECRET || "Ni0sdfg4325sfwesfer432sdfg_0089@IT",
+          process.env.NEXT_PUBLIC_JWT_SECRET,
           { expiresIn: "30d" }
         );
 
@@ -2060,15 +2115,12 @@ export const resolvers = {
       requireAuth(user);
       try {
         let subTotal = 0;
-
         console.log("Creating order with input:", input);
-
         const items = await Promise.all(
           input.items.map(async (item) => {
             if (!item.product) {
               throw new GraphQLError("Product ID is required for each item");
             }
-
             const product = await Product.findById(item.product);
             if (!product) {
               throw new GraphQLError(
@@ -2137,7 +2189,7 @@ export const resolvers = {
         if (!updateStatus) {
           throw new Error("រកមិនឃើញ Order ទេ");
         }
-        return {
+        return {  
           ...successResponse(),
           updateStatus,
         };
@@ -2542,13 +2594,13 @@ export const resolvers = {
           duplicateFilter.shop = null;
         }
 
-        const existing = await Category.findOne(duplicateFilter);
-        if (existing) {
-          return errorResponse(
-            "Category name already exists in this scope",
-            "ឈ្មោះប្រភេទមានរួចហើយ"
-          );
-        }
+        // const existing = await Category.findOne(duplicateFilter);
+        // if (existing) {
+        //   return errorResponse(
+        //     "Category name already exists in this scope",
+        //     "ឈ្មោះប្រភេទមានរួចហើយ"
+        //   );
+        // }
 
         const owner = user.role === "Admin" ? null : user.id;
         const shop = input.shopId || null;
@@ -2604,6 +2656,19 @@ export const resolvers = {
           return errorResponse("Category not found", "រកមិនឃើញប្រភេទទេ");
         }
 
+        const existing = await Category.findOne({
+          slug,
+          _id: { $ne: id },
+          ...(shop && { shop }),
+        });
+
+        if (existing) {
+          return errorResponse(
+            "Category with this slug already exists",
+            "មានប្រភេទនេះរួចហើយ"
+          );
+        }
+
         if (shop) {
           const hasAccess = await verifyShopAccess(user.id, shop);
           if (!hasAccess) {
@@ -2636,6 +2701,110 @@ export const resolvers = {
         return errorResponse();
       }
     },
+    createCategoryForShop: async (_, { shopId, input }, { user }) => {
+      requireRole(user, ["Seller"]);
+      try {
+        const existingCategory = await Category.findOne({
+          name: input.name,
+          shop: shopId,
+        });
+
+        if (existingCategory) {
+          return {
+            isSuccess: false,
+            message: {
+              messageEn: "Category already exists.",
+              messageKh: "ប្រភេទនេះមានរួចហើយ។",
+            },
+          };
+        }
+
+        function generateSlug(text) {
+          return text
+            .toString()
+            .normalize("NFKD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^\w\s\u1780-\u17FF]/g, "")
+            .trim()
+            .replace(/\s+/g, "-")
+            .toLowerCase();
+        }
+
+        const category = new Category({
+          name: input.name,
+          nameKh: input.nameKh || "មិនមានឈ្មោះជាភាសាខ្មែរ",
+          slug: generateSlug(input.name),
+          description: input.description || "",
+          image: input.image || "",
+          active: input.active ?? true,
+          shop: shopId,
+          parent: input.parent || null,
+        });
+        await category.save();
+
+        return {
+          ...successResponse(),
+          category,
+        };
+      } catch (error) {
+        console.error("Error creating category:", error);
+        return errorResponse(
+          "Failed to create category",
+          "បរាជ័យក្នុងការបង្កើតប្រភេទ"
+        );
+      }
+    },
+    updateCategoryForShop: async (_, { id, input }, { user }) => {
+      requireRole(user, ["Seller"]);
+      try {
+        const updatedCategory = await Category.findByIdAndUpdate(
+          id,
+          {
+            name: input.name,
+            nameKh: input.nameKh || "",
+            slug: input.slug || input.name.toLowerCase().replace(/\s+/g, "-"),
+            description: input.description || "",
+            image: input.image || "",
+            active: input.active ?? true,
+            parent: input.parent || null,
+          },
+          { new: true }
+        );
+
+        if (!updatedCategory) {
+          return {
+            isSuccess: false,
+            message: {
+              messageEn: "Category not found.",
+              messageKh: "រកមិនឃើញប្រភេទទេ។",
+            },
+          };
+        }
+
+        return {
+          ...successResponse(),
+          category: updatedCategory,
+        };
+      } catch (error) {
+        console.error("Update error:", error);
+        return errorResponse();
+      }
+    },
+
+    deleteCategoryForShop: async (_, { id }, { user }) => {
+      // requireRole(user,["Seller","Manager"])
+      try {
+        const categoryDelete = await Category.findByIdAndDelete(id);
+
+        return {
+          ...successResponse(),
+          categoryDelete,
+        };
+      } catch (error) {
+        return errorResponse();
+      }
+    },
+
     // ==============================================END CATEGORY MUTATION=========================================================
     createBanner: async (_, { input }) => {
       try {

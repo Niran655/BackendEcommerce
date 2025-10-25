@@ -127,7 +127,6 @@ export const typeDefs = `#graphql
       minStock: Int
       lowStock: Boolean
     }
-         
     type ShopProductVisibility{
       shop: Shop!
       isVisible: Boolean
@@ -340,15 +339,40 @@ export const typeDefs = `#graphql
       totalTransactions: Int
       averageOrderValue: Float
       salesByCategory: [CategorySale!]
+      shopPerformance:[ShopPerformance]
       salesByDay: [DailySale]
       averageSoldCompareToOtherStaff: Float
       staffName: String
+      productMovement:[StockMovement]
+      salesByProduct:[ProductSale]
+
     }
 
     type CategorySale {
       category: String!
       sales: Float!
       quantity: Int!
+    }
+
+    type ShopPerformance{
+      shop: [Shop]
+      totalSale:Float
+      itemsSold:Int
+    }
+
+    type EcommerceReport{
+      newUser:Int
+      newShop:Int
+      totalOnlineSales: Float
+      topShopSales:Float
+      topSellingOnlineProducts: [ProductSale]
+    }
+
+    type ProductSale{
+      productName:String
+      totalQuantity:Int
+      totalAmount:Float
+      retailPrice:Float
     }
 
     type DailySale {
@@ -414,6 +438,7 @@ export const typeDefs = `#graphql
         DELIVERED
         CANCELLED
         COMPLETED
+        REJECT
     }
 
     enum PaymentStatus {
@@ -518,6 +543,11 @@ export const typeDefs = `#graphql
 
   type ShopEventPaginator{
     data: [ShopEvent]
+    paginator: PaginatorMeta
+  }
+  
+  type ProductMovementReportPaginator{
+    data: [StockMovement]
     paginator: PaginatorMeta
   }
 
@@ -685,7 +715,7 @@ export const typeDefs = `#graphql
     }
 
     input CustomerInput {
-      # id: ID!
+      id:ID
       firstName: String
       lastName: String
       phone: String
@@ -774,7 +804,7 @@ export const typeDefs = `#graphql
     input CategoryInput{
         name: String!
         nameKh:String
-        slug: String!          
+        slug: String          
         description: String    
         image: String           
         active: Boolean!
@@ -840,7 +870,7 @@ export const typeDefs = `#graphql
       getCategoryForOwner(owner:ID):[Category]
       getParentCategoryForAdmin:[Category]
       getCategoriesForAdminWithPagination(page:Int,limit:Int, pagination: Boolean, keyword: String):CategoryForAdminPaginator
-
+      
       #============================================END CATEGORY QUERY=================================================
       # Banner 
       banners: [Banner!]!
@@ -855,6 +885,7 @@ export const typeDefs = `#graphql
       # ==========================================START CUSTMER ORDER QUERY================================
 
       getOrderForShop(shopId:ID):[Order]
+      getOrderWithEmailForCustomer(email:ID):[Order]
       getAllOrder:[Order]
       getOrderComplete(shopId: ID, status: OrderStatus): [Order]
       
@@ -886,11 +917,14 @@ export const typeDefs = `#graphql
       dashboardStats: DashboardStats!
       dashboardStatsForAdmin: DashboardStateForAdmin!
       dashboardStatsForShop(shopId:ID):DashboardStats!
+
+
       #Reports 
       salesReport(startDate: Date!, endDate: Date!): SalesReport!
       salesReportForShop(startDate: Date!, endDate: Date!, shopId: ID): SalesReport
       shopStaffSaleReport(shopId:ID!, startDate: Date!, endDate: Date!): [SalesReport]
-
+      shopSaleProductReport(startDate:Date, endDate:Date,shopId:ID): SalesReport
+      
       #===============================END DASHBOARD AND REPORTS QUERY==========================================
     }
     type Mutation {
@@ -938,6 +972,10 @@ export const typeDefs = `#graphql
       updateCategory(id:ID!, input:CategoryInput): MutationResponse
       deleteCategory(id:ID!):MutationResponse
       
+      createCategoryForShop(shopId:ID,input:CategoryInput):MutationResponse
+      updateCategoryForShop(id:ID!,input:CategoryInput): MutationResponse
+      deleteCategoryForShop(id:ID!):MutationResponse
+
       #banner
       createBanner(input:BannerInput):MutationResponse
       updateBanner(id:ID!,input:BannerInput) :MutationResponse

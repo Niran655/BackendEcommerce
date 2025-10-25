@@ -1,19 +1,59 @@
-// // utils/paginateQuery.js
-// const paginateQuery = async ({ model, query = {}, page = 1, limit = 10, pagination = true }) => {
+
+// const paginateQuery = async ({
+//   model,
+//   query = {},
+//   page = 1,
+//   limit = 10,
+//   pagination = true,
+//   populate = [], 
+//   select = "",   
+//   sort = { createdAt: -1 }, 
+// }) => {
 //   const totalDocs = await model.countDocuments(query);
 //   const totalPages = Math.ceil(totalDocs / limit);
 //   const skip = (page - 1) * limit;
 
-//   const data = pagination
-//     ? await model.find(query).skip(skip).limit(limit)
-//     : await model.find(query);
+//   let mongooseQuery = model.find(query).sort(sort).select(select);
+
+  
+//   if (populate && populate.length > 0) {
+//     populate.forEach((pop) => {
+//       mongooseQuery = mongooseQuery.populate(pop);
+//     });
+//   }
+
+  
+//   if (pagination) {
+//     mongooseQuery = mongooseQuery.skip(skip).limit(limit);
+//   }
+
+//   const data = await mongooseQuery.lean();
+
+ 
+//   const safeData = data.map((doc) => {
+//     const newDoc = {
+//       ...doc,
+//       id: doc._id?.toString(),
+//     };
+//     delete newDoc._id;
+
+//     Object.keys(newDoc).forEach((key) => {
+//       const val = newDoc[key];
+//       if (val && typeof val === "object" && val._id) {
+//         newDoc[key] = { ...val, id: val._id.toString() };
+//         delete newDoc[key]._id;
+//       }
+//     });
+
+//     return newDoc;
+//   });
 
 //   const paginator = {
 //     slNo: skip + 1,
 //     prev: page > 1 ? page - 1 : null,
 //     next: page < totalPages ? page + 1 : null,
 //     perPage: limit,
-//     totalPosts: data.length,
+//     totalPosts: safeData.length,
 //     totalPages,
 //     currentPage: page,
 //     hasPrevPage: page > 1,
@@ -21,48 +61,77 @@
 //     totalDocs,
 //   };
 
-//   return { data, paginator };
+//   return { data: safeData, paginator };
 // };
 
 // export default paginateQuery;
-// utils/paginateQuery.js
 const paginateQuery = async ({
   model,
   query = {},
   page = 1,
   limit = 10,
   pagination = true,
-  populate = [], // new: for population
-  select = "",   // new: for field selection
-  sort = { createdAt: -1 }, // optional sorting
+  populate = [],
+  select = "",
+  sort = { createdAt: -1 },
 }) => {
-  const totalDocs = await model.countDocuments(query);
-  const totalPages = Math.ceil(totalDocs / limit);
   const skip = (page - 1) * limit;
 
-  // Base query
-  let mongooseQuery = model.find(query).sort(sort).select(select);
 
-  // Apply populate if provided
-  if (populate && populate.length > 0) {
-    populate.forEach((pop) => {
-      mongooseQuery = mongooseQuery.populate(pop);
+  const isAggregate = typeof model?.cursor === "function";
+
+  let data = [];
+  let totalDocs = 0;
+
+  if (isAggregate) {
+  
+    const pipeline = model.pipeline(); 
+    const countPipeline = [...pipeline, { $count: "total" }];
+    const countResult = await model.model.aggregate(countPipeline);
+    totalDocs = countResult[0]?.total || 0;
+
+    if (pagination) {
+      model = model.skip(skip).limit(limit);
+    }
+
+    data = await model.exec();
+  } else {
+
+    totalDocs = await model.countDocuments(query);
+    let mongooseQuery = model.find(query).sort(sort).select(select);
+
+    if (populate.length > 0) {
+      populate.forEach((pop) => {
+        mongooseQuery = mongooseQuery.populate(pop);
+      });
+    }
+
+    if (pagination) {
+      mongooseQuery = mongooseQuery.skip(skip).limit(limit);
+    }
+
+    data = await mongooseQuery.lean();
+  }
+
+  const safeData = data.map((doc) => {
+    const newDoc = {
+      ...doc,
+      id: doc._id?.toString(),
+    };
+    delete newDoc._id;
+
+    Object.keys(newDoc).forEach((key) => {
+      const val = newDoc[key];
+      if (val && typeof val === "object" && val._id) {
+        newDoc[key] = { ...val, id: val._id.toString() };
+        delete newDoc[key]._id;
+      }
     });
-  }
 
-  // Apply pagination
-  if (pagination) {
-    mongooseQuery = mongooseQuery.skip(skip).limit(limit);
-  }
+    return newDoc;
+  });
 
-  // Use lean() to avoid Buffer ID issues
-  const data = await mongooseQuery.lean();
-
-  // Convert _id fields to string (GraphQL-safe)
-  const safeData = data.map((doc) => ({
-    ...doc,
-    id: doc._id?.toString(),
-  }));
+  const totalPages = Math.ceil(totalDocs / limit);
 
   const paginator = {
     slNo: skip + 1,

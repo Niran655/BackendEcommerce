@@ -5,7 +5,8 @@ import { resolvers } from "./resolvers.js";
 import { typeDefs } from "./typeDefs.js";
 import { buildContext } from "./auth.js";
 import { connectDB } from "./db.js";
-
+import * as dotenv from 'dotenv'
+dotenv.config()
 
 await connectDB();
 

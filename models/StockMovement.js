@@ -16,7 +16,7 @@ const stockMovementSchema = new mongoose.Schema({
   shop: { type: mongoose.Schema.Types.ObjectId, ref: "Shop", require: true },
   quantity: { type: Number, required: true },
   reason: { type: String, required: true },
-  reference: { type: String }, // PO number, sale number, etc.
+  reference: { type: String },
   user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   previousStock: { type: Number, required: true },
   newStock: { type: Number, required: true },

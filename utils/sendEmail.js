@@ -6,8 +6,8 @@ export async function sendEmail(to, otp) {
     port: 587,
     secure: false,
     auth: {
-      user: "niron.camdoc@gmail.com", 
-      pass: "czgl zxta muff qyoo", 
+      user: process.env.NEXT_PUBLIC_EMAIL_USERNAME, 
+      pass: process.env.NEXT_PUBLIC_EMAIL_PASSWORD, 
     },
   });
 
