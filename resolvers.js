@@ -1467,7 +1467,7 @@ export const resolvers = {
       console.log("process.env.NEXT_PUBLIC_JWT_SECRET",process.env.NEXT_PUBLIC_JWT_SECRET)
       console.log({ email, password });
       const user = await User.findOne({ email, active: true });
-      console.log({ user });
+      console.log(user);
       if (!user) {
         throw new GraphQLError("Invalid credentials");
       }
@@ -1486,6 +1486,7 @@ export const resolvers = {
           expiresIn: "24h",
         }
       );
+      console.log("token",token)
       return {
         token,
         user,
